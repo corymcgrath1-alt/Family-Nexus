@@ -3,20 +3,40 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: FamilySpace API - private family communication and experiences platform
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: family-members
+    description: Family member profiles and preferences
+  - name: experiences
+    description: Experience recommendations and interactions
+  - name: invitations
+    description: Invitation builder and RSVP flow
+  - name: calendar-events
+    description: Shared family calendar
+  - name: planning-tasks
+    description: Planning tasks for upcoming events
+  - name: memories
+    description: Saved experience ideas and memories
+  - name: reflections
+    description: Post-experience reflections
+  - name: messages
+    description: Family messages
+  - name: shortlist
+    description: Shortlisted experiences
+  - name: today
+    description: Today dashboard summary
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +44,571 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /family-members:
+    get:
+      operationId: listFamilyMembers
+      tags: [family-members]
+      summary: List all family members
+      responses:
+        "200":
+          description: List of family members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FamilyMember"
+
+  /family-members/{id}:
+    get:
+      operationId: getFamilyMember
+      tags: [family-members]
+      summary: Get a family member
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Family member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FamilyMember"
+        "404":
+          description: Not found
+
+  /family-members/{id}/profile:
+    get:
+      operationId: getMemberProfile
+      tags: [family-members]
+      summary: Get experience profile for a family member
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Experience profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExperienceProfile"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateMemberProfile
+      tags: [family-members]
+      summary: Update experience profile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExperienceProfileUpdate"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExperienceProfile"
+
+  /experiences:
+    get:
+      operationId: listExperiences
+      tags: [experiences]
+      summary: List experience recommendations
+      parameters:
+        - name: timeframe
+          in: query
+          schema:
+            type: string
+            enum: [right-now, this-week, this-weekend, this-month, this-season, this-year, surprise]
+        - name: participants
+          in: query
+          schema:
+            type: string
+        - name: maxCost
+          in: query
+          schema:
+            type: number
+        - name: maxDistance
+          in: query
+          schema:
+            type: number
+        - name: energyLevel
+          in: query
+          schema:
+            type: string
+            enum: [low, medium, high]
+        - name: setting
+          in: query
+          schema:
+            type: string
+            enum: [home, indoor, outdoor, any]
+        - name: needsChildcare
+          in: query
+          schema:
+            type: boolean
+        - name: surpriseMode
+          in: query
+          schema:
+            type: boolean
+        - name: savedOnly
+          in: query
+          schema:
+            type: boolean
+        - name: shortlistedOnly
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: List of experiences
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Experience"
+
+  /experiences/search:
+    get:
+      operationId: searchExperiences
+      tags: [experiences]
+      summary: Natural language experience search
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: viewerId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Search results with parsed filters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExperienceSearchResult"
+
+  /experiences/{id}:
+    get:
+      operationId: getExperience
+      tags: [experiences]
+      summary: Get a single experience
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Experience detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Experience"
+        "404":
+          description: Not found
+
+  /experiences/{id}/save:
+    post:
+      operationId: saveExperience
+      tags: [experiences]
+      summary: Save or unsave an experience
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExperienceActionInput"
+      responses:
+        "200":
+          description: Updated experience
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Experience"
+
+  /experiences/{id}/hide:
+    post:
+      operationId: hideExperience
+      tags: [experiences]
+      summary: Hide or unhide an experience
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExperienceActionInput"
+      responses:
+        "200":
+          description: Updated experience
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Experience"
+
+  /experiences/{id}/shortlist:
+    post:
+      operationId: shortlistExperience
+      tags: [experiences]
+      summary: Add or remove experience from shortlist
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExperienceActionInput"
+      responses:
+        "200":
+          description: Updated experience
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Experience"
+
+  /invitations:
+    get:
+      operationId: listInvitations
+      tags: [invitations]
+      summary: List all invitations
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, accepted, suggested-change, needs-info, declined, cancelled]
+        - name: memberId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of invitations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Invitation"
+    post:
+      operationId: createInvitation
+      tags: [invitations]
+      summary: Create a new invitation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvitationInput"
+      responses:
+        "201":
+          description: Created invitation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invitation"
+
+  /invitations/{id}:
+    get:
+      operationId: getInvitation
+      tags: [invitations]
+      summary: Get an invitation by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Invitation detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invitation"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateInvitation
+      tags: [invitations]
+      summary: Update invitation or submit RSVP
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvitationUpdate"
+      responses:
+        "200":
+          description: Updated invitation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invitation"
+        "404":
+          description: Not found
+
+  /calendar-events:
+    get:
+      operationId: listCalendarEvents
+      tags: [calendar-events]
+      summary: List calendar events
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+        - name: to
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of calendar events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CalendarEvent"
+    post:
+      operationId: createCalendarEvent
+      tags: [calendar-events]
+      summary: Add event to shared calendar
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CalendarEventInput"
+      responses:
+        "201":
+          description: Created calendar event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalendarEvent"
+
+  /planning-tasks:
+    get:
+      operationId: listPlanningTasks
+      tags: [planning-tasks]
+      summary: List planning tasks
+      parameters:
+        - name: calendarEventId
+          in: query
+          schema:
+            type: string
+        - name: invitationId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of planning tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PlanningTask"
+
+  /planning-tasks/{id}:
+    patch:
+      operationId: updatePlanningTask
+      tags: [planning-tasks]
+      summary: Update a planning task (toggle complete, etc.)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlanningTaskUpdate"
+      responses:
+        "200":
+          description: Updated planning task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanningTask"
+
+  /memories:
+    get:
+      operationId: listMemories
+      tags: [memories]
+      summary: List experience memories
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, postponed, completed, archived]
+      responses:
+        "200":
+          description: List of memories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Memory"
+    post:
+      operationId: createMemory
+      tags: [memories]
+      summary: Save a memory or idea
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemoryInput"
+      responses:
+        "201":
+          description: Created memory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Memory"
+
+  /memories/{id}:
+    patch:
+      operationId: updateMemory
+      tags: [memories]
+      summary: Update memory status or details
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemoryUpdate"
+      responses:
+        "200":
+          description: Updated memory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Memory"
+
+  /reflections:
+    get:
+      operationId: listReflections
+      tags: [reflections]
+      summary: List post-experience reflections
+      responses:
+        "200":
+          description: List of reflections
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Reflection"
+    post:
+      operationId: createReflection
+      tags: [reflections]
+      summary: Submit a post-experience reflection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReflectionInput"
+      responses:
+        "201":
+          description: Created reflection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Reflection"
+
+  /messages:
+    get:
+      operationId: listMessages
+      tags: [messages]
+      summary: List family messages
+      responses:
+        "200":
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+
+  /today:
+    get:
+      operationId: getTodaySummary
+      tags: [today]
+      summary: Get today dashboard summary
+      parameters:
+        - name: viewerId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Today summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TodaySummary"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +619,733 @@ components:
       required:
         - status
 
+    FamilyMember:
+      type: object
+      required: [id, name, role, avatar, color]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum: [adult, child]
+        avatar:
+          type: string
+        color:
+          type: string
+        age:
+          type: ["integer", "null"]
+
+    ExperienceProfile:
+      type: object
+      required: [memberId, interests, dislikes, crowdTolerance, activityLevel, updatedAt]
+      properties:
+        memberId:
+          type: string
+        interests:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProfilePreference"
+        dislikes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProfilePreference"
+        curiosityItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProfilePreference"
+        foodPreferences:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProfilePreference"
+        allergies:
+          type: array
+          items:
+            type: string
+        crowdTolerance:
+          type: string
+          enum: [low, medium, high]
+        activityLevel:
+          type: string
+          enum: [low, medium, high]
+        preferredTimeOfDay:
+          type: array
+          items:
+            type: string
+            enum: [morning, afternoon, evening, night]
+        travelTolerance:
+          type: string
+          enum: [local, regional, overnight, anywhere]
+        spendingComfort:
+          type: string
+          enum: [budget, moderate, comfortable, flexible]
+        surpriseComfort:
+          type: string
+          enum: [no-surprises, some-ok, loves-surprises]
+        accessibilityNeeds:
+          type: array
+          items:
+            type: string
+        favorites:
+          type: array
+          items:
+            type: string
+        neverSuggest:
+          type: array
+          items:
+            type: string
+        updatedAt:
+          type: string
+
+    ProfilePreference:
+      type: object
+      required: [value, visibility]
+      properties:
+        value:
+          type: string
+        visibility:
+          type: string
+          enum: [private, ai-only, share-summary, share-exact, surprise-ok, never]
+
+    ExperienceProfileUpdate:
+      type: object
+      properties:
+        interests:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProfilePreference"
+        dislikes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProfilePreference"
+        curiosityItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProfilePreference"
+        foodPreferences:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProfilePreference"
+        allergies:
+          type: array
+          items:
+            type: string
+        crowdTolerance:
+          type: string
+          enum: [low, medium, high]
+        activityLevel:
+          type: string
+          enum: [low, medium, high]
+        preferredTimeOfDay:
+          type: array
+          items:
+            type: string
+        travelTolerance:
+          type: string
+          enum: [local, regional, overnight, anywhere]
+        spendingComfort:
+          type: string
+          enum: [budget, moderate, comfortable, flexible]
+        surpriseComfort:
+          type: string
+          enum: [no-surprises, some-ok, loves-surprises]
+        accessibilityNeeds:
+          type: array
+          items:
+            type: string
+        favorites:
+          type: array
+          items:
+            type: string
+        neverSuggest:
+          type: array
+          items:
+            type: string
+
+    Experience:
+      type: object
+      required: [id, title, description, imageUrl, participants, timeframes, durationMinutes, costEstimate, energyLevel, setting, planningEffort, isSaved, isHidden, isShortlisted, whyItFits, privacySafeSource, demoDataNote]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        imageUrl:
+          type: string
+        participants:
+          type: array
+          items:
+            type: string
+        participantIds:
+          type: array
+          items:
+            type: string
+        timeframes:
+          type: array
+          items:
+            type: string
+            enum: [right-now, this-week, this-weekend, this-month, this-season, this-year, surprise]
+        durationMinutes:
+          type: integer
+        costEstimate:
+          type: number
+        costBreakdown:
+          type: ["string", "null"]
+        energyLevel:
+          type: string
+          enum: [low, medium, high]
+        setting:
+          type: string
+          enum: [home, indoor, outdoor, any]
+        planningEffort:
+          type: string
+          enum: [none, minimal, moderate, significant]
+        needsChildcare:
+          type: boolean
+        needsReservation:
+          type: boolean
+        weatherConsideration:
+          type: ["string", "null"]
+        accessibilityNotes:
+          type: ["string", "null"]
+        isSaved:
+          type: boolean
+        isHidden:
+          type: boolean
+        isShortlisted:
+          type: boolean
+        whyItFits:
+          type: string
+        privacySafeSource:
+          type: string
+        demoDataNote:
+          type: string
+        distanceMiles:
+          type: ["number", "null"]
+        travelTimeMinutes:
+          type: ["integer", "null"]
+        crowdLevel:
+          type: ["string", "null"]
+        surpriseEligible:
+          type: boolean
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        demoAvailability:
+          type: ["string", "null"]
+
+    ExperienceActionInput:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: boolean
+        memberId:
+          type: string
+
+    ExperienceSearchResult:
+      type: object
+      required: [experiences, parsedFilters, query]
+      properties:
+        query:
+          type: string
+        parsedFilters:
+          $ref: "#/components/schemas/ParsedSearchFilters"
+        experiences:
+          type: array
+          items:
+            $ref: "#/components/schemas/Experience"
+
+    ParsedSearchFilters:
+      type: object
+      properties:
+        participants:
+          type: array
+          items:
+            type: string
+        dayOfWeek:
+          type: ["string", "null"]
+        timeOfDay:
+          type: ["string", "null"]
+        maxCost:
+          type: ["number", "null"]
+        maxDistance:
+          type: ["number", "null"]
+        crowdLevel:
+          type: ["string", "null"]
+        energyLevel:
+          type: ["string", "null"]
+        setting:
+          type: ["string", "null"]
+        month:
+          type: ["string", "null"]
+        surpriseMode:
+          type: ["boolean", "null"]
+        durationHours:
+          type: ["number", "null"]
+        chips:
+          type: array
+          items:
+            $ref: "#/components/schemas/FilterChip"
+
+    FilterChip:
+      type: object
+      required: [key, label, value]
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        value:
+          type: string
+        editable:
+          type: boolean
+
+    Invitation:
+      type: object
+      required: [id, inviterId, inviteeIds, experienceId, status, detailLevel, createdAt]
+      properties:
+        id:
+          type: string
+        inviterId:
+          type: string
+        inviteeIds:
+          type: array
+          items:
+            type: string
+        experienceId:
+          type: string
+        experienceTitle:
+          type: string
+        status:
+          type: string
+          enum: [draft, pending, accepted, suggested-change, needs-info, declined, cancelled]
+        purpose:
+          type: ["string", "null"]
+        proposedDate:
+          type: ["string", "null"]
+        proposedDateFlexible:
+          type: boolean
+        durationMinutes:
+          type: ["integer", "null"]
+        detailLevel:
+          type: string
+          enum: [full, partial, hidden]
+        dressGuidance:
+          type: ["string", "null"]
+        whatToBring:
+          type: ["string", "null"]
+        planningResponsibility:
+          type: ["string", "null"]
+        paymentArrangement:
+          type: ["string", "null"]
+        transportationNotes:
+          type: ["string", "null"]
+        childcareNotes:
+          type: ["string", "null"]
+        reservationStatus:
+          type: ["string", "null"]
+        accessibilityNotes:
+          type: ["string", "null"]
+        message:
+          type: ["string", "null"]
+        isSurprise:
+          type: boolean
+        surpriseRevealedFields:
+          type: array
+          items:
+            type: string
+        rsvpResponse:
+          type: ["string", "null"]
+        rsvpNote:
+          type: ["string", "null"]
+        rsvpAt:
+          type: ["string", "null"]
+        calendarEventId:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: ["string", "null"]
+
+    InvitationInput:
+      type: object
+      required: [inviterId, inviteeIds, experienceId, detailLevel]
+      properties:
+        inviterId:
+          type: string
+        inviteeIds:
+          type: array
+          items:
+            type: string
+        experienceId:
+          type: string
+        purpose:
+          type: string
+        proposedDate:
+          type: string
+        proposedDateFlexible:
+          type: boolean
+        durationMinutes:
+          type: integer
+        detailLevel:
+          type: string
+          enum: [full, partial, hidden]
+        dressGuidance:
+          type: string
+        whatToBring:
+          type: string
+        planningResponsibility:
+          type: string
+        paymentArrangement:
+          type: string
+        transportationNotes:
+          type: string
+        childcareNotes:
+          type: string
+        reservationStatus:
+          type: string
+        accessibilityNotes:
+          type: string
+        message:
+          type: string
+        isSurprise:
+          type: boolean
+        surpriseRevealedFields:
+          type: array
+          items:
+            type: string
+
+    InvitationUpdate:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [draft, pending, accepted, suggested-change, needs-info, declined, cancelled]
+        rsvpResponse:
+          type: string
+        rsvpNote:
+          type: string
+        proposedDate:
+          type: string
+        message:
+          type: string
+        calendarEventId:
+          type: string
+        dressGuidance:
+          type: string
+        whatToBring:
+          type: string
+        childcareNotes:
+          type: string
+        reservationStatus:
+          type: string
+
+    CalendarEvent:
+      type: object
+      required: [id, title, date, participantIds, createdAt]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        date:
+          type: string
+        time:
+          type: ["string", "null"]
+        durationMinutes:
+          type: ["integer", "null"]
+        participantIds:
+          type: array
+          items:
+            type: string
+        experienceId:
+          type: ["string", "null"]
+        invitationId:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+        location:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    CalendarEventInput:
+      type: object
+      required: [title, date, participantIds]
+      properties:
+        title:
+          type: string
+        date:
+          type: string
+        time:
+          type: string
+        durationMinutes:
+          type: integer
+        participantIds:
+          type: array
+          items:
+            type: string
+        experienceId:
+          type: string
+        invitationId:
+          type: string
+        notes:
+          type: string
+        location:
+          type: string
+
+    PlanningTask:
+      type: object
+      required: [id, title, category, completed, dueDate, createdAt]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        category:
+          type: string
+          enum: [childcare, reservation, tickets, transport, reminder, weather, backup, other]
+        completed:
+          type: boolean
+        dueDate:
+          type: ["string", "null"]
+        calendarEventId:
+          type: ["string", "null"]
+        invitationId:
+          type: ["string", "null"]
+        assigneeId:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    PlanningTaskUpdate:
+      type: object
+      properties:
+        completed:
+          type: boolean
+        title:
+          type: string
+        dueDate:
+          type: string
+        assigneeId:
+          type: string
+        description:
+          type: string
+
+    Memory:
+      type: object
+      required: [id, title, sourceType, status, createdAt]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: ["string", "null"]
+        sourceType:
+          type: string
+          enum: [message, manual, experience, web]
+        sourceMessage:
+          type: ["string", "null"]
+        mentionedBy:
+          type: ["string", "null"]
+        imageUrl:
+          type: ["string", "null"]
+        link:
+          type: ["string", "null"]
+        season:
+          type: ["string", "null"]
+        budgetEstimate:
+          type: ["number", "null"]
+        participantIds:
+          type: array
+          items:
+            type: string
+        surpriseEligible:
+          type: boolean
+        advancePlanningNeeded:
+          type: boolean
+        status:
+          type: string
+          enum: [active, postponed, completed, archived]
+        createdAt:
+          type: string
+        updatedAt:
+          type: ["string", "null"]
+
+    MemoryInput:
+      type: object
+      required: [title, sourceType]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        sourceType:
+          type: string
+          enum: [message, manual, experience, web]
+        sourceMessage:
+          type: string
+        mentionedBy:
+          type: string
+        imageUrl:
+          type: string
+        link:
+          type: string
+        season:
+          type: string
+        budgetEstimate:
+          type: number
+        participantIds:
+          type: array
+          items:
+            type: string
+        surpriseEligible:
+          type: boolean
+        advancePlanningNeeded:
+          type: boolean
+
+    MemoryUpdate:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [active, postponed, completed, archived]
+        title:
+          type: string
+        description:
+          type: string
+        season:
+          type: string
+        surpriseEligible:
+          type: boolean
+
+    Reflection:
+      type: object
+      required: [id, memberId, calendarEventId, visibility, createdAt]
+      properties:
+        id:
+          type: string
+        memberId:
+          type: string
+        calendarEventId:
+          type: string
+        visibility:
+          type: string
+          enum: [private, shared]
+        enjoyment:
+          type: ["integer", "null"]
+        wouldRepeat:
+          type: ["boolean", "null"]
+        bestPart:
+          type: ["string", "null"]
+        costComfort:
+          type: ["string", "null"]
+        durationFit:
+          type: ["string", "null"]
+        crowdFit:
+          type: ["string", "null"]
+        feltConsidered:
+          type: ["boolean", "null"]
+        planningEffortFelt:
+          type: ["string", "null"]
+        traditionWorthy:
+          type: ["boolean", "null"]
+        rememberFor:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    ReflectionInput:
+      type: object
+      required: [memberId, calendarEventId, visibility]
+      properties:
+        memberId:
+          type: string
+        calendarEventId:
+          type: string
+        visibility:
+          type: string
+          enum: [private, shared]
+        enjoyment:
+          type: integer
+        wouldRepeat:
+          type: boolean
+        bestPart:
+          type: string
+        costComfort:
+          type: string
+        durationFit:
+          type: string
+        crowdFit:
+          type: string
+        feltConsidered:
+          type: boolean
+        planningEffortFelt:
+          type: string
+        traditionWorthy:
+          type: boolean
+        rememberFor:
+          type: string
+
+    Message:
+      type: object
+      required: [id, senderId, content, createdAt]
+      properties:
+        id:
+          type: string
+        senderId:
+          type: string
+        content:
+          type: string
+        createdAt:
+          type: string
+        hasExperienceMention:
+          type: boolean
+        experienceMentionText:
+          type: ["string", "null"]
+        savedAsMemoryId:
+          type: ["string", "null"]
+
+    TodaySummary:
+      type: object
+      required: [date, featuredExperience, upcomingCalendarEvent, pendingInvitation, urgentPlanningTask, quickActions]
+      properties:
+        date:
+          type: string
+        featuredExperience:
+          $ref: "#/components/schemas/Experience"
+        upcomingCalendarEvent:
+          $ref: "#/components/schemas/CalendarEvent"
+        pendingInvitation:
+          $ref: "#/components/schemas/Invitation"
+        urgentPlanningTask:
+          $ref: "#/components/schemas/PlanningTask"
+        quickActions:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuickAction"
+
+    QuickAction:
+      type: object
+      required: [id, label, action, icon]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        action:
+          type: string
+        icon:
+          type: string
+        targetId:
+          type: ["string", "null"]
