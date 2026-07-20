@@ -50,6 +50,8 @@ router.get("/privacy/summary", async (req, res): Promise<void> => {
     protections: [
       "Your account is access-controlled by your email and password",
       "Private preference data is filtered server-side before reaching other household members",
+      "Family Library items use server-side access checks for private, shared, and household records",
+      "Family Library share, revoke, archive, delete, export, and direct-view events create redacted audit records",
       "Surprise Mode invitations enforce field-level restrictions on the server",
       "Each adult has an independent account with equal authority — no admin hierarchy",
       "Private reflections are never returned to other household members",
@@ -57,7 +59,7 @@ router.get("/privacy/summary", async (req, res): Promise<void> => {
     limitations: [
       "Data is stored on shared servers and is not end-to-end encrypted",
       "This version is not suitable for medical records, banking credentials, or identity documents",
-      "There is no audit log of data access in this version",
+      "Audit logging is not yet implemented across every existing domain",
       "Replit's infrastructure has access to stored data as with any hosted web application",
     ],
     principle: "This app helps us remember what we chose to share. It does not investigate what either of us chose to keep private.",

@@ -1,18 +1,50 @@
 import React from "react";
 import { Link, useLocation } from "wouter";
-import { Home, MessageCircle, Compass, Home as HomeIcon, Lock, Shield, LogOut } from "lucide-react";
+import {
+  BarChart3,
+  BriefcaseBusiness,
+  Car,
+  ClipboardList,
+  Compass,
+  HeartPulse,
+  Home,
+  Home as HomeIcon,
+  Library,
+  LogOut,
+  Plug,
+  Shield,
+  Users,
+  WalletCards,
+} from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { apiGetUnreadCounts } from "@/lib/api";
 import { PRODUCT_DESCRIPTOR, PRODUCT_NAME } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
-const NAV_ITEMS = [
+type NavItem = {
+  path: string;
+  label: string;
+  mobileLabel?: string;
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
+};
+
+const NAV_ITEMS: NavItem[] = [
   { path: "/", label: "Today", icon: Home },
-  { path: "/messages", label: "Messages", icon: MessageCircle },
-  { path: "/together", label: "Together", icon: Compass },
-  { path: "/household", label: "Household", icon: HomeIcon },
-  { path: "/vault", label: "Vault", icon: Lock },
-  { path: "/privacy", label: "Privacy", icon: Shield },
+  { path: "/family", label: "Family", icon: Users },
+  { path: "/library", label: "Library", icon: Library },
+  { path: "/together", label: "Connection", icon: Compass },
+  { path: "/privacy", label: "Settings and Privacy", icon: Shield, mobileLabel: "Privacy" },
+];
+
+const PREVIEW_ITEMS = [
+  { label: "Plans", icon: ClipboardList },
+  { label: "Insights", icon: BarChart3 },
+  { label: "Health", icon: HeartPulse },
+  { label: "Home", icon: HomeIcon },
+  { label: "Vehicles", icon: Car },
+  { label: "Money", icon: WalletCards },
+  { label: "Career", icon: BriefcaseBusiness },
+  { label: "Integrations", icon: Plug },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -74,19 +106,28 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               )}>
                 <item.icon className="w-5 h-5" />
                 {item.label}
-                {item.path === "/messages" && unreadCounts.messages > 0 && (
+                {item.path === "/together" && (unreadCounts.invitations + unreadCounts.messages) > 0 && (
                   <span className="ml-auto text-xs bg-[#4A7C59] text-white rounded-full px-1.5 py-0.5 min-w-[1.25rem] text-center">
-                    {unreadCounts.messages}
-                  </span>
-                )}
-                {item.path === "/together" && unreadCounts.invitations > 0 && (
-                  <span className="ml-auto text-xs bg-[#4A7C59] text-white rounded-full px-1.5 py-0.5 min-w-[1.25rem] text-center">
-                    {unreadCounts.invitations}
+                    {unreadCounts.invitations + unreadCounts.messages}
                   </span>
                 )}
               </Link>
             );
           })}
+
+          <div className="pt-3 mt-3 border-t border-sidebar-border space-y-1">
+            {PREVIEW_ITEMS.map((item) => (
+              <div
+                key={item.label}
+                className="flex items-center gap-3 px-3 py-2 rounded-md text-muted-foreground/70 text-sm"
+                aria-disabled="true"
+              >
+                <item.icon className="w-5 h-5" />
+                <span className="flex-1">{item.label}</span>
+                <span className="text-[10px] uppercase tracking-wide">Preview</span>
+              </div>
+            ))}
+          </div>
 
           <button
             onClick={() => logout()}
@@ -126,15 +167,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
             )}>
               <item.icon className={cn("w-5 h-5", isActive && "fill-primary/20")} strokeWidth={isActive ? 2.5 : 2} />
-              <span className="text-[10px] font-medium">{item.label}</span>
-              {item.path === "/messages" && unreadCounts.messages > 0 && (
+              <span className="text-[10px] font-medium">{item.mobileLabel ?? item.label}</span>
+              {item.path === "/together" && (unreadCounts.invitations + unreadCounts.messages) > 0 && (
                 <span className="absolute top-1 right-1 text-[10px] bg-[#4A7C59] text-white rounded-full w-4 h-4 flex items-center justify-center">
-                  {unreadCounts.messages}
-                </span>
-              )}
-              {item.path === "/together" && unreadCounts.invitations > 0 && (
-                <span className="absolute top-1 right-1 text-[10px] bg-[#4A7C59] text-white rounded-full w-4 h-4 flex items-center justify-center">
-                  {unreadCounts.invitations}
+                  {unreadCounts.invitations + unreadCounts.messages}
                 </span>
               )}
             </Link>

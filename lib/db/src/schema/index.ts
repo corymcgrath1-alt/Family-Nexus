@@ -11,3 +11,5 @@ export * from "./calendar-events";
 export * from "./planning-tasks";
 export * from "./memories";
 export * from "./reflections";
+export * from "./lighthouse-core";
+export * from "./family-library";

@@ -182,7 +182,7 @@ export default function TodayPage() {
           {summary.quickActions.map((action: any) => (
             <Link
               key={action.id}
-              href={action.action}
+              href={action.targetId ?? action.action}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors"
             >
               <Search className="w-4 h-4 text-muted-foreground" />

@@ -27,7 +27,7 @@ export default function InvitationDetailPage() {
   if (!inv) return <div className="p-10 text-center">Invitation not found</div>;
 
   // inviterId and inviteeIds are integers from the API
-  const isInviter = user?.id !== undefined && (Number(inv.inviterId) === user.id || inv.inviterId === user.id);
+  const isInviter = user?.id !== undefined && Number(inv.inviterId) === user.id;
   const isInvitee = user?.id !== undefined && (
     Array.isArray(inv.inviteeIds)
       ? inv.inviteeIds.some((id: unknown) => Number(id) === user.id)

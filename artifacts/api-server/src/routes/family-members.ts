@@ -104,11 +104,13 @@ router.patch("/family-members/:id/profile", async (req, res): Promise<void> => {
     return;
   }
 
-  const [created] = await db.insert(experienceProfilesTable).values({
+  const insertValues = {
     householdId: req.session.householdId!,
     userId: id,
     ...updates,
-  } as Parameters<typeof db.insert>[0]["$inferInsert"]).returning();
+  } as typeof experienceProfilesTable.$inferInsert;
+
+  const [created] = await db.insert(experienceProfilesTable).values(insertValues).returning();
   res.status(201).json({ ...created, updatedAt: created.updatedAt.toISOString() });
 });
 

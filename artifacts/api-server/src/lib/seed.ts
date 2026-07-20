@@ -1,6 +1,19 @@
 import bcrypt from "bcryptjs";
-import { db, householdsTable, usersTable, invitationsTable, memoriesTable, planningTasksTable, messagesTable, experienceProfilesTable } from "@workspace/db";
+import {
+  auditEventsTable,
+  db,
+  experienceProfilesTable,
+  householdsTable,
+  invitationsTable,
+  libraryItemsTable,
+  memoriesTable,
+  messagesTable,
+  planningTasksTable,
+  sharingGrantsTable,
+  usersTable,
+} from "@workspace/db";
 import { DEFAULT_PROFILES } from "./mock-family";
+import { nanoid } from "nanoid";
 
 const DEMO_PASSWORD_HASH_CACHE: Record<string, string> = {};
 
@@ -9,6 +22,10 @@ async function hash(pw: string): Promise<string> {
     DEMO_PASSWORD_HASH_CACHE[pw] = await bcrypt.hash(pw, 12);
   }
   return DEMO_PASSWORD_HASH_CACHE[pw];
+}
+
+function newPassportId(): string {
+  return `lhp_${nanoid(24)}`;
 }
 
 export async function checkAndSeed(): Promise<void> {
@@ -33,6 +50,7 @@ export async function checkAndSeed(): Promise<void> {
 
   const [alex] = await db.insert(usersTable).values({
     householdId: hhId,
+    lighthousePassportId: newPassportId(),
     email: "alex@example.com",
     passwordHash: alexHash,
     displayName: "Alex",
@@ -44,6 +62,7 @@ export async function checkAndSeed(): Promise<void> {
 
   const [morgan] = await db.insert(usersTable).values({
     householdId: hhId,
+    lighthousePassportId: newPassportId(),
     email: "morgan@example.com",
     passwordHash: morganHash,
     displayName: "Morgan",
@@ -55,6 +74,7 @@ export async function checkAndSeed(): Promise<void> {
 
   await db.insert(usersTable).values({
     householdId: hhId,
+    lighthousePassportId: newPassportId(),
     email: "jamie@example.com",
     passwordHash: jamieHash,
     displayName: "Jamie",
@@ -228,6 +248,136 @@ export async function checkAndSeed(): Promise<void> {
       completed: false,
     });
   }
+
+  // 8. Demo Family Library items
+  const [alexPrivate] = await db.insert(libraryItemsTable).values({
+    householdId: hhId,
+    ownerUserId: alex.id,
+    subjectUserId: alex.id,
+    ownerKind: "person",
+    visibility: "private",
+    category: "instruction",
+    title: "Alex private reminder about travel packing",
+    body: "Keep a spare charger in the front pouch of the weekender bag.",
+    sourceType: "manual",
+    sourceLabel: "Demo note",
+    provenance: { sourceType: "manual", note: "Synthetic seed data", recordedByUserId: alex.id },
+    sensitivity: "personal",
+    retentionPolicy: "review-annually",
+    createdById: alex.id,
+    updatedById: alex.id,
+  }).returning();
+
+  const [morganPrivate] = await db.insert(libraryItemsTable).values({
+    householdId: hhId,
+    ownerUserId: morgan.id,
+    subjectUserId: morgan.id,
+    ownerKind: "person",
+    visibility: "private",
+    category: "note",
+    title: "Morgan private weekend reset note",
+    body: "A quiet Saturday morning works better than adding another errand.",
+    sourceType: "manual",
+    sourceLabel: "Demo note",
+    provenance: { sourceType: "manual", note: "Synthetic seed data", recordedByUserId: morgan.id },
+    sensitivity: "personal",
+    retentionPolicy: "review-annually",
+    createdById: morgan.id,
+    updatedById: morgan.id,
+  }).returning();
+
+  const [householdLibraryItem] = await db.insert(libraryItemsTable).values({
+    householdId: hhId,
+    ownerUserId: alex.id,
+    ownerKind: "household",
+    visibility: "household",
+    category: "household-record",
+    title: "Water shutoff is in the basement utility closet",
+    body: "Main valve is on the wall behind the washer. Turn clockwise until snug.",
+    sourceType: "manual",
+    sourceLabel: "Synthetic home note",
+    provenance: { sourceType: "manual", note: "Synthetic seed data", recordedByUserId: alex.id },
+    sensitivity: "standard",
+    retentionPolicy: "keep-until-archived",
+    createdById: alex.id,
+    updatedById: alex.id,
+  }).returning();
+
+  const [sharedLibraryItem] = await db.insert(libraryItemsTable).values({
+    householdId: hhId,
+    ownerUserId: alex.id,
+    subjectUserId: alex.id,
+    ownerKind: "person",
+    visibility: "shared",
+    category: "decision",
+    title: "Try a slow Sunday after busy Saturdays",
+    body: "Shared decision: protect Sunday morning as recovery time unless something is truly urgent.",
+    sourceType: "manual",
+    sourceLabel: "Synthetic shared decision",
+    provenance: { sourceType: "manual", note: "Synthetic seed data", recordedByUserId: alex.id },
+    sensitivity: "personal",
+    retentionPolicy: "review-annually",
+    createdById: alex.id,
+    updatedById: alex.id,
+  }).returning();
+
+  const [grant] = await db.insert(sharingGrantsTable).values({
+    householdId: hhId,
+    resourceType: "library_item",
+    resourceId: sharedLibraryItem.id,
+    grantorUserId: alex.id,
+    granteeUserId: morgan.id,
+    permission: "read",
+    purpose: "library_share",
+  }).returning();
+
+  await db.insert(auditEventsTable).values([
+    {
+      householdId: hhId,
+      actorUserId: alex.id,
+      targetType: "library_item",
+      targetId: alexPrivate.id,
+      eventType: "created",
+      summary: "Library item created",
+      metadata: { category: alexPrivate.category, visibility: alexPrivate.visibility, sensitivity: alexPrivate.sensitivity },
+    },
+    {
+      householdId: hhId,
+      actorUserId: morgan.id,
+      targetType: "library_item",
+      targetId: morganPrivate.id,
+      eventType: "created",
+      summary: "Library item created",
+      metadata: { category: morganPrivate.category, visibility: morganPrivate.visibility, sensitivity: morganPrivate.sensitivity },
+    },
+    {
+      householdId: hhId,
+      actorUserId: alex.id,
+      targetType: "library_item",
+      targetId: householdLibraryItem.id,
+      eventType: "created",
+      summary: "Library item created",
+      metadata: { category: householdLibraryItem.category, visibility: householdLibraryItem.visibility, sensitivity: householdLibraryItem.sensitivity },
+    },
+    {
+      householdId: hhId,
+      actorUserId: alex.id,
+      targetType: "library_item",
+      targetId: sharedLibraryItem.id,
+      eventType: "created",
+      summary: "Library item created",
+      metadata: { category: sharedLibraryItem.category, visibility: sharedLibraryItem.visibility, sensitivity: sharedLibraryItem.sensitivity },
+    },
+    {
+      householdId: hhId,
+      actorUserId: alex.id,
+      targetType: "library_item",
+      targetId: sharedLibraryItem.id,
+      eventType: "shared",
+      summary: "Library item shared",
+      metadata: { grantId: grant.id, sharedRecipientCount: 1 },
+    },
+  ]);
 
   console.log(`[seed] Done. Household id=${hhId}, Alex id=${alex.id}, Morgan id=${morgan.id}`);
 }

@@ -36,7 +36,7 @@ The Family Intelligence Operating System.
 
 ## Product
 
-Lighthouse helps a household coordinate shared life while preserving adult-owned private space. The current prototype includes Today, household membership, relationship-support experiences, messages, and privacy visibility.
+Lighthouse helps a household coordinate shared life while preserving adult-owned private space. The current prototype includes Today, household membership, Family Library records and sharing, relationship-support experiences, messages, and privacy visibility.
 
 ## User Preferences
 
