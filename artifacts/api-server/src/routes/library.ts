@@ -137,10 +137,15 @@ function fmtGrant(grant: SharingGrantRow) {
   };
 }
 
-function fmtItem(item: LibraryItemRow, grants: SharingGrantRow[] = []) {
+function isActiveGrant(grant: SharingGrantRow, now = new Date()): boolean {
+  return !grant.revokedAt && (!grant.expiresAt || grant.expiresAt > now);
+}
+
+function fmtItemForActor(item: LibraryItemRow, grants: SharingGrantRow[] = [], actor: LibraryActor) {
+  const visibleGrants = item.ownerUserId === actor.id ? grants : [];
   return {
     ...item,
-    grants: grants.map(fmtGrant),
+    grants: visibleGrants.map(fmtGrant),
     provenance: item.provenance as Record<string, unknown>,
     allowedPurposes: item.allowedPurposes as string[],
     createdAt: item.createdAt.toISOString(),
@@ -195,7 +200,7 @@ router.get("/library/items", async (req, res): Promise<void> => {
       )
     : authorized;
 
-  res.json(filtered.map((item) => fmtItem(item, grantsForItem(grants, item.id))));
+  res.json(filtered.map((item) => fmtItemForActor(item, grantsForItem(grants, item.id), actor)));
 });
 
 router.get("/library/stats", async (req, res): Promise<void> => {
@@ -333,7 +338,7 @@ router.post("/library/items", async (req, res): Promise<void> => {
     return { item, grants: grantRows };
   });
 
-  res.status(201).json(fmtItem(result.item, result.grants));
+  res.status(201).json(fmtItemForActor(result.item, result.grants, actor));
 });
 
 router.get("/library/items/:id", async (req, res): Promise<void> => {
@@ -360,7 +365,7 @@ router.get("/library/items/:id", async (req, res): Promise<void> => {
     metadata: { category: result.item.category, sensitivity: result.item.sensitivity },
   });
 
-  res.json(fmtItem(result.item, result.grants));
+  res.json(fmtItemForActor(result.item, result.grants, actor));
 });
 
 router.patch("/library/items/:id", async (req, res): Promise<void> => {
@@ -428,7 +433,7 @@ router.patch("/library/items/:id", async (req, res): Promise<void> => {
     metadata: { changedFields: Object.keys(input).filter((key) => input[key as keyof typeof input] !== undefined) },
   });
 
-  res.json(fmtItem(updated, result.grants));
+  res.json(fmtItemForActor(updated, result.grants, actor));
 });
 
 router.delete("/library/items/:id", async (req, res): Promise<void> => {
@@ -501,7 +506,7 @@ router.post("/library/items/:id/share", async (req, res): Promise<void> => {
     return;
   }
 
-  const existing = result.grants.find((grant) => grant.granteeUserId === recipient.id && !grant.revokedAt);
+  const existing = result.grants.find((grant) => grant.granteeUserId === recipient.id && isActiveGrant(grant));
   let grant = existing;
 
   if (!grant) {
@@ -536,7 +541,7 @@ router.post("/library/items/:id/share", async (req, res): Promise<void> => {
   });
 
   const grants = await selectGrants([result.item.id]);
-  res.json(fmtItem(updated, grantsForItem(grants, result.item.id)));
+  res.json(fmtItemForActor(updated, grantsForItem(grants, result.item.id), actor));
 });
 
 router.post("/library/items/:id/revoke", async (req, res): Promise<void> => {
@@ -560,7 +565,7 @@ router.post("/library/items/:id/revoke", async (req, res): Promise<void> => {
   }
 
   const grant = result.grants.find((candidate) => {
-    if (candidate.revokedAt) return false;
+    if (!isActiveGrant(candidate)) return false;
     if (parsed.data.grantId) return candidate.id === parsed.data.grantId;
     return candidate.granteeUserId === parsed.data.granteeUserId;
   });
@@ -576,7 +581,7 @@ router.post("/library/items/:id/revoke", async (req, res): Promise<void> => {
     .set({ revokedAt: now, revokedById: actor.id })
     .where(eq(sharingGrantsTable.id, grant.id));
 
-  const remaining = result.grants.filter((candidate) => candidate.id !== grant.id && !candidate.revokedAt);
+  const remaining = result.grants.filter((candidate) => candidate.id !== grant.id && isActiveGrant(candidate));
   const [updated] = await db
     .update(libraryItemsTable)
     .set({
@@ -599,7 +604,7 @@ router.post("/library/items/:id/revoke", async (req, res): Promise<void> => {
   });
 
   const grants = await selectGrants([result.item.id]);
-  res.json(fmtItem(updated, grantsForItem(grants, result.item.id)));
+  res.json(fmtItemForActor(updated, grantsForItem(grants, result.item.id), actor));
 });
 
 router.get("/library/items/:id/audit", async (req, res): Promise<void> => {
@@ -660,7 +665,7 @@ router.get("/library/items/:id/export", async (req, res): Promise<void> => {
   res.json({
     exportedAt: new Date().toISOString(),
     formatVersion: "library-item.v1",
-    item: fmtItem(result.item, result.grants),
+    item: fmtItemForActor(result.item, result.grants, actor),
   });
 });
 

@@ -8,7 +8,7 @@ const router: IRouter = Router();
 router.use(requireAuth);
 
 function safeUser(u: typeof usersTable.$inferSelect) {
-  const { passwordHash: _pw, ...rest } = u;
+  const { passwordHash: _pw, lighthousePassportId: _passportId, ...rest } = u;
   return {
     ...rest,
     createdAt: u.createdAt.toISOString(),

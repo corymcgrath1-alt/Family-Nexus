@@ -29,6 +29,8 @@ function newPassportId(): string {
 }
 
 export async function checkAndSeed(): Promise<void> {
+  if (process.env.NODE_ENV === "test" || process.env.SKIP_DEMO_SEED === "true") return;
+
   // Idempotent: skip if household already exists
   const existing = await db.select().from(householdsTable).limit(1);
   if (existing.length > 0) return;

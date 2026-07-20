@@ -36,6 +36,7 @@ const householdItem: LibraryPolicyItem = {
 
 const activeGrant: LibraryPolicyGrant = {
   granteeUserId: adultB.id,
+  permission: "read",
   revokedAt: null,
   expiresAt: null,
 };
@@ -56,6 +57,11 @@ test("explicit grants allow intended adult access", () => {
 test("revocation removes future access", () => {
   const revokedGrant = { ...activeGrant, revokedAt: new Date() };
   assert.equal(canReadLibraryItem(adultB, privateItem, [revokedGrant]), false);
+});
+
+test("non-read grants do not authorize read access", () => {
+  const commentOnlyGrant = { ...activeGrant, permission: "comment" };
+  assert.equal(canReadLibraryItem(adultB, privateItem, [commentOnlyGrant]), false);
 });
 
 test("household items are distinct from private or shared items", () => {

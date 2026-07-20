@@ -19,6 +19,7 @@ export type LibraryPolicyItem = {
 
 export type LibraryPolicyGrant = {
   granteeUserId: number;
+  permission?: string;
   revokedAt: Date | null;
   expiresAt: Date | null;
 };
@@ -44,7 +45,9 @@ export function canReadLibraryItem(
   if (!isAdult(actor)) return false;
   if (item.ownerUserId === actor.id) return true;
   if (item.visibility === "household") return true;
-  return grants.some((grant) => grant.granteeUserId === actor.id && isActiveGrant(grant, now));
+  return grants.some(
+    (grant) => grant.granteeUserId === actor.id && grant.permission === "read" && isActiveGrant(grant, now),
+  );
 }
 
 export function canUpdateLibraryItem(actor: LibraryActor, item: LibraryPolicyItem): boolean {

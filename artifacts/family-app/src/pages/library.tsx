@@ -34,6 +34,7 @@ type ShareGrant = {
   purpose: string;
   createdAt: string;
   revokedAt: string | null;
+  expiresAt: string | null;
 };
 
 type LibraryItem = {
@@ -129,7 +130,10 @@ export default function LibraryPage() {
     [items, selectedId],
   );
 
-  const selectedActiveGrants = selected?.grants.filter((grant) => !grant.revokedAt) ?? [];
+  const selectedActiveGrants = selected?.grants.filter((grant) => {
+    if (grant.revokedAt) return false;
+    return !grant.expiresAt || new Date(grant.expiresAt) > new Date();
+  }) ?? [];
   const isOwner = !!selected && selected.ownerUserId === user?.id;
 
   const accessExplanation = useMemo(() => {
@@ -184,6 +188,40 @@ export default function LibraryPage() {
       .then((events) => setAuditEvents(events as AuditEvent[]))
       .catch(() => setAuditEvents([]));
   }, [selected?.id]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+
+    let cancelled = false;
+    const verifySelectedAccess = async () => {
+      try {
+        const verified = await apiFetch(`/library/items/${selectedId}`) as LibraryItem;
+        if (cancelled) return;
+        setItems((current) => current.map((item) => (item.id === verified.id ? verified : item)));
+      } catch (err: any) {
+        if (cancelled || err.status !== 404) return;
+        setAuditEvents([]);
+        setItems((current) => current.filter((item) => item.id !== selectedId));
+        setSelectedId(null);
+        await load(query);
+      }
+    };
+
+    const handleFocus = () => {
+      void verifySelectedAccess();
+    };
+    const handleVisibilityChange = () => {
+      if (!document.hidden) void verifySelectedAccess();
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [load, query, selectedId]);
 
   async function createItem(e: React.FormEvent) {
     e.preventDefault();
@@ -450,6 +488,7 @@ export default function LibraryPage() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              aria-label="Search Library"
               placeholder="Search items you are authorized to see"
               className="flex-1 bg-transparent text-sm outline-none"
             />
@@ -470,6 +509,7 @@ export default function LibraryPage() {
                   <button
                     key={item.id}
                     onClick={() => setSelectedId(item.id)}
+                    data-testid="library-item-card"
                     className={cn(
                       "w-full rounded-lg border p-3 text-left transition-colors",
                       selected?.id === item.id ? "border-primary bg-primary/5" : "border-border bg-card hover:bg-secondary/40",
@@ -489,7 +529,7 @@ export default function LibraryPage() {
               </div>
 
               {selected && (
-                <div className="rounded-lg border border-border bg-card p-4 md:p-5 space-y-5 min-w-0">
+                <div data-testid="library-selected-detail" className="rounded-lg border border-border bg-card p-4 md:p-5 space-y-5 min-w-0">
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div>
                       <div className="flex flex-wrap gap-2 mb-2">
@@ -526,7 +566,7 @@ export default function LibraryPage() {
                     </div>
                   </div>
 
-                  <div className="rounded-md bg-muted/40 p-4 text-sm whitespace-pre-wrap min-h-24">
+                  <div data-testid="library-selected-body" className="rounded-md bg-muted/40 p-4 text-sm whitespace-pre-wrap min-h-24">
                     {selected.body || "No details recorded."}
                   </div>
 
@@ -555,7 +595,7 @@ export default function LibraryPage() {
                         <p className="text-xs text-muted-foreground">No active sharing grants.</p>
                       )}
                       <div className="flex gap-2">
-                        <select value={shareTarget} onChange={(e) => setShareTarget(e.target.value)} className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm">
+                        <select aria-label="Share with adult" value={shareTarget} onChange={(e) => setShareTarget(e.target.value)} className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm">
                           <option value="">Select adult</option>
                           {adults.map((adult) => <option key={adult.id} value={adult.id}>{adult.displayName}</option>)}
                         </select>
@@ -572,6 +612,7 @@ export default function LibraryPage() {
                       <textarea
                         value={correction}
                         onChange={(e) => setCorrection(e.target.value)}
+                        aria-label="Correction body"
                         rows={4}
                         className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                       />

@@ -1,4 +1,5 @@
 export * from "./households";
+export * from "./sessions";
 export * from "./users";
 export * from "./household-invites";
 export * from "./messages";
