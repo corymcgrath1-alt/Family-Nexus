@@ -1,3 +1,12 @@
 <svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="180" height="180" rx="36" fill="#FF3C00"/>
+<rect width="180" height="180" rx="32" fill="#F8F6F1"/>
+<rect x="34" y="133" width="112" height="10" rx="5" fill="#2F4F43"/>
+<path d="M68 132L76 70H104L112 132H68Z" fill="#4A7C59"/>
+<path d="M72 70L82 45H98L108 70H72Z" fill="#2F4F43"/>
+<rect x="68" y="63" width="44" height="12" rx="4" fill="#4A7C59"/>
+<circle cx="90" cy="57" r="10" fill="#F2C66D"/>
+<path d="M90 28V14" stroke="#2F4F43" stroke-width="7" stroke-linecap="round"/>
+<path d="M113 38L123 28" stroke="#2F4F43" stroke-width="7" stroke-linecap="round"/>
+<path d="M67 38L57 28" stroke="#2F4F43" stroke-width="7" stroke-linecap="round"/>
+<rect x="85" y="86" width="10" height="46" rx="5" fill="#F8F6F1" opacity=".88"/>
 </svg>

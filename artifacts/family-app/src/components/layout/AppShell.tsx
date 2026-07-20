@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { Home, MessageCircle, Compass, Home as HomeIcon, Lock, Shield, LogOut } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { apiGetUnreadCounts } from "@/lib/api";
+import { PRODUCT_DESCRIPTOR, PRODUCT_NAME } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -40,9 +41,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <div className="w-8 h-8 rounded bg-primary text-primary-foreground flex items-center justify-center font-serif font-bold text-lg">
               L
             </div>
-            <span className="font-serif text-xl font-semibold text-sidebar-foreground">Lighthouse</span>
+            <span className="font-serif text-xl font-semibold text-sidebar-foreground">{PRODUCT_NAME}</span>
           </div>
-          <span className="text-xs text-muted-foreground/60 font-sans mt-1 ml-11">family operating system</span>
+          <span className="text-xs text-muted-foreground/60 font-sans mt-1 ml-11">{PRODUCT_DESCRIPTOR}</span>
         </div>
 
         {/* User identity block */}
@@ -100,7 +101,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 pb-16 md:pb-0 overflow-auto">
         <header className="md:hidden sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b border-border p-4 flex items-center justify-between">
-          <span className="font-serif text-lg font-semibold">Lighthouse</span>
+          <span className="font-serif text-lg font-semibold">{PRODUCT_NAME}</span>
           <div className="flex gap-2">
             {user && (
               <div
