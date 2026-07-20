@@ -80,7 +80,7 @@ jobs:
           node --version
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --config.strict-dep-builds=false
 
       - name: Install PostgreSQL client
         run: |
