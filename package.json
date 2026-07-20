@@ -5,6 +5,7 @@
   "scripts": {
     "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
+    "test:library-policy": "pnpm --filter @workspace/api-server exec tsc src/lib/library-policy.ts src/lib/library-policy.test.ts --module commonjs --target es2022 --moduleResolution node --outDir ../../tmp/library-policy-test --skipLibCheck --strict --esModuleInterop --types node && node tmp/library-policy-test/library-policy.test.js",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },
