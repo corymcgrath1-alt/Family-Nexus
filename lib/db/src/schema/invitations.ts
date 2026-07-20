@@ -4,9 +4,10 @@ import { z } from "zod/v4";
 
 export const invitationsTable = pgTable("invitations", {
   id: serial("id").primaryKey(),
+  householdId: integer("household_id").notNull(),
   slug: text("slug").notNull().unique(),
-  inviterId: text("inviter_id").notNull(),
-  inviteeIds: jsonb("invitee_ids").notNull().default([]),
+  inviterId: integer("inviter_id").notNull(),
+  inviteeIds: jsonb("invitee_ids").notNull().default([]), // array of user IDs (integers)
   experienceId: text("experience_id").notNull(),
   experienceTitle: text("experience_title").notNull().default(""),
   status: text("status").notNull().default("draft"),

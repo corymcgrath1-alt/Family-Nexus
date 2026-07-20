@@ -2,7 +2,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
-import { Route, Switch, Router as WouterRouter } from 'wouter';
+import { Route, Switch, Router as WouterRouter, Redirect } from 'wouter';
+import { AuthProvider, useAuth } from '@/lib/auth';
 
 // Layouts
 import { AppShell } from '@/components/layout/AppShell';
@@ -12,6 +13,12 @@ import TodayPage from '@/pages/today';
 import MessagesPage from '@/pages/messages';
 import HouseholdPage from '@/pages/household';
 import VaultPage from '@/pages/vault';
+import PrivacyPage from '@/pages/privacy';
+
+// Auth Pages
+import LoginPage from '@/pages/auth/login';
+import RegisterPage from '@/pages/auth/register';
+import JoinPage from '@/pages/auth/join';
 
 // Together Pages
 import TogetherLayout from '@/pages/together/layout';
@@ -27,26 +34,49 @@ const queryClient = new QueryClient({
   },
 });
 
+function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
+  const { isLoading, isAuthenticated } = useAuth();
+  if (isLoading)
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin h-8 w-8 border-4 border-[#4A7C59] border-t-transparent rounded-full" />
+      </div>
+    );
+  if (!isAuthenticated) return <Redirect to="/login" />;
+  return <Component />;
+}
+
 function Router() {
   return (
-    <AppShell>
-      <Switch>
-        <Route path="/" component={TodayPage} />
-        <Route path="/messages" component={MessagesPage} />
-        <Route path="/household" component={HouseholdPage} />
-        <Route path="/vault" component={VaultPage} />
-        
-        {/* Detail routes first to match before layout catch-all */}
-        <Route path="/together/experiences/:id" component={ExperienceDetailPage} />
-        <Route path="/together/invitations/:id" component={InvitationDetailPage} />
-        
-        {/* Together layout wrapper for tabs */}
-        <Route path="/together" component={TogetherLayout} />
-        <Route path="/together/:tab" component={TogetherLayout} />
-        
-        <Route component={NotFound} />
-      </Switch>
-    </AppShell>
+    <Switch>
+      {/* Public auth routes */}
+      <Route path="/login" component={LoginPage} />
+      <Route path="/register" component={RegisterPage} />
+      <Route path="/join/:token" component={JoinPage} />
+
+      {/* Protected routes inside AppShell */}
+      <Route>
+        <AppShell>
+          <Switch>
+            <Route path="/" component={() => <ProtectedRoute component={TodayPage} />} />
+            <Route path="/messages" component={() => <ProtectedRoute component={MessagesPage} />} />
+            <Route path="/household" component={() => <ProtectedRoute component={HouseholdPage} />} />
+            <Route path="/vault" component={() => <ProtectedRoute component={VaultPage} />} />
+            <Route path="/privacy" component={() => <ProtectedRoute component={PrivacyPage} />} />
+
+            {/* Detail routes first */}
+            <Route path="/together/experiences/:id" component={() => <ProtectedRoute component={ExperienceDetailPage} />} />
+            <Route path="/together/invitations/:id" component={() => <ProtectedRoute component={InvitationDetailPage} />} />
+
+            {/* Together layout wrapper for tabs */}
+            <Route path="/together" component={() => <ProtectedRoute component={TogetherLayout} />} />
+            <Route path="/together/:tab" component={() => <ProtectedRoute component={TogetherLayout} />} />
+
+            <Route component={NotFound} />
+          </Switch>
+        </AppShell>
+      </Route>
+    </Switch>
   );
 }
 
@@ -55,7 +85,9 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-          <Router />
+          <AuthProvider>
+            <Router />
+          </AuthProvider>
         </WouterRouter>
         <Toaster />
       </TooltipProvider>

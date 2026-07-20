@@ -1,7 +1,7 @@
 import React from "react";
-import { useListCalendarEvents, useListPlanningTasks } from "@workspace/api-client-react";
+import { useListCalendarEvents } from "@workspace/api-client-react";
 import { Calendar as CalendarIcon, Clock, MapPin } from "lucide-react";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, parseISO } from "date-fns";
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, parseISO } from "date-fns";
 import { cn } from "@/lib/utils";
 
 export default function CalendarTab() {
@@ -14,13 +14,14 @@ export default function CalendarTab() {
   const end = endOfMonth(today);
   const days = eachDayOfInterval({ start, end });
 
-  // Group events by date string (YYYY-MM-DD)
-  const eventsByDate = events?.reduce((acc: any, event) => {
+  const eventsByDate = events?.reduce((acc: any, event: any) => {
     const dateStr = event.date.split('T')[0];
     if (!acc[dateStr]) acc[dateStr] = [];
     acc[dateStr].push(event);
     return acc;
   }, {}) || {};
+
+  const hasEvents = events && events.length > 0;
 
   return (
     <div className="p-6 md:p-10 pt-0 max-w-5xl mx-auto space-y-6">
@@ -37,8 +38,7 @@ export default function CalendarTab() {
             {day}
           </div>
         ))}
-        
-        {/* Pad start of month */}
+
         {Array.from({ length: start.getDay() }).map((_, i) => (
           <div key={`pad-${i}`} className="bg-card min-h-[100px] opacity-50" />
         ))}
@@ -56,7 +56,7 @@ export default function CalendarTab() {
               )}>
                 {format(day, "d")}
               </span>
-              
+
               <div className="mt-2 space-y-1">
                 {dayEvents.map((event: any) => (
                   <div key={event.id} className="text-[10px] leading-tight p-1.5 bg-accent/20 text-accent-foreground rounded border border-accent/30 font-medium truncate">
@@ -70,13 +70,19 @@ export default function CalendarTab() {
         })}
       </div>
 
-      {events && events.length > 0 && (
+      {!hasEvents ? (
+        <div className="text-center py-16 border border-dashed border-border rounded-2xl bg-card/50">
+          <CalendarIcon className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-40" />
+          <p className="font-serif text-lg mb-1">No events yet</p>
+          <p className="text-muted-foreground text-sm">Events appear here once an invitation is accepted.</p>
+        </div>
+      ) : (
         <div className="mt-10">
           <h3 className="font-serif text-lg mb-4">Upcoming Events</h3>
           <div className="grid sm:grid-cols-2 gap-4">
-            {events.slice(0, 4).map(event => (
+            {events.slice(0, 4).map((event: any) => (
               <div key={event.id} className="p-4 rounded-xl border border-border bg-card flex gap-4">
-                 <div className="flex flex-col items-center justify-center w-12 h-12 bg-secondary rounded-lg text-secondary-foreground shrink-0">
+                <div className="flex flex-col items-center justify-center w-12 h-12 bg-secondary rounded-lg text-secondary-foreground shrink-0">
                   <span className="text-[10px] font-bold uppercase">{format(parseISO(event.date), "MMM")}</span>
                   <span className="text-lg font-serif leading-none">{format(parseISO(event.date), "d")}</span>
                 </div>
@@ -84,10 +90,10 @@ export default function CalendarTab() {
                   <h4 className="font-medium text-foreground">{event.title}</h4>
                   <div className="flex flex-wrap items-center text-xs text-muted-foreground mt-1.5 gap-3">
                     {event.time && (
-                      <span className="flex items-center gap-1"><Clock className="w-3 h-3"/> {event.time}</span>
+                      <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {event.time}</span>
                     )}
                     {event.location && (
-                      <span className="flex items-center gap-1"><MapPin className="w-3 h-3"/> {event.location}</span>
+                      <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {event.location}</span>
                     )}
                   </div>
                 </div>

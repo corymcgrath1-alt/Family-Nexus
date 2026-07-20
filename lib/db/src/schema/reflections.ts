@@ -4,7 +4,8 @@ import { z } from "zod/v4";
 
 export const reflectionsTable = pgTable("reflections", {
   id: serial("id").primaryKey(),
-  memberId: text("member_id").notNull(),
+  householdId: integer("household_id").notNull(),
+  userId: integer("user_id").notNull(),
   calendarEventId: text("calendar_event_id").notNull(),
   visibility: text("visibility").notNull().default("private"),
   enjoyment: integer("enjoyment"),
@@ -20,9 +21,6 @@ export const reflectionsTable = pgTable("reflections", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const insertReflectionSchema = createInsertSchema(reflectionsTable).omit({
-  id: true,
-  createdAt: true,
-});
+export const insertReflectionSchema = createInsertSchema(reflectionsTable).omit({ id: true, createdAt: true });
 export type InsertReflection = z.infer<typeof insertReflectionSchema>;
 export type Reflection = typeof reflectionsTable.$inferSelect;

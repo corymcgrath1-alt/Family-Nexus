@@ -1,27 +1,34 @@
 import React from "react";
-import { Link } from "wouter";
 import { useListFamilyMembers, useGetMemberProfile } from "@workspace/api-client-react";
-import { useViewerStore } from "@/store/viewer";
+import { useAuth } from "@/lib/auth";
 import { Shield, Eye, Lock, Edit3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function ProfilesTab() {
   const { data: members, isLoading: membersLoading } = useListFamilyMembers();
-  
+
   if (membersLoading) return <div className="p-6">Loading profiles...</div>;
+
+  if (!members || members.length === 0) {
+    return (
+      <div className="p-10 text-center border border-dashed border-border rounded-2xl bg-card/50 max-w-md mx-auto mt-10">
+        <p className="text-muted-foreground text-sm">No profiles found.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 md:p-10 pt-0 max-w-4xl mx-auto space-y-8">
       <div className="bg-secondary/30 border border-secondary rounded-xl p-4 flex items-start gap-3">
         <Shield className="w-5 h-5 text-primary shrink-0 mt-0.5" />
         <p className="text-sm text-muted-foreground">
-          Profiles help tailor experience recommendations. Personal preferences are kept private by default. 
+          Profiles help tailor experience recommendations. Personal preferences are kept private by default.
           What you see of others is governed by their sharing settings.
         </p>
       </div>
 
       <div className="grid gap-6">
-        {members?.map(member => (
+        {members.map((member: any) => (
           <ProfileCard key={member.id} member={member} />
         ))}
       </div>
@@ -30,26 +37,36 @@ export default function ProfilesTab() {
 }
 
 function ProfileCard({ member }: { member: any }) {
-  const { viewerId } = useViewerStore();
-  const isMe = viewerId === member.id;
-  const isAdultViewer = viewerId === "alex" || viewerId === "morgan";
-  
-  const { data: profile, isLoading } = useGetMemberProfile(member.id, { 
-    query: { enabled: !!member.id, queryKey: ["profile", member.id] } 
+  const { user } = useAuth();
+  const isMe = user?.id === member.id;
+  const isAdultViewer = user?.role === 'adult';
+
+  const { data: profile, isLoading } = useGetMemberProfile(member.id, {
+    query: { enabled: !!member.id, queryKey: ["profile", member.id] }
   });
 
   if (isLoading) return <div className="h-40 bg-muted rounded-xl animate-pulse" />;
-  if (!profile) return null;
+
+  if (!profile) {
+    return (
+      <div className="border border-border bg-card rounded-2xl p-6 text-center text-muted-foreground text-sm">
+        Profile not filled in yet for {member.displayName ?? member.id}.
+      </div>
+    );
+  }
 
   return (
     <div className="border border-border bg-card rounded-2xl overflow-hidden shadow-sm">
       <div className="bg-muted p-6 flex items-center justify-between border-b border-border">
         <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-2xl font-serif">
-            {member.id[0].toUpperCase()}
+          <div
+            className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-serif text-white"
+            style={{ backgroundColor: member.color ?? '#4A7C59' }}
+          >
+            {member.avatarInitials ?? (member.displayName?.[0]?.toUpperCase() ?? '?')}
           </div>
           <div>
-            <h3 className="text-2xl font-serif text-foreground capitalize">{member.id}</h3>
+            <h3 className="text-2xl font-serif text-foreground">{member.displayName ?? member.id}</h3>
             <p className="text-sm text-muted-foreground">{isMe ? "Your Profile" : "Family Member"}</p>
           </div>
         </div>
@@ -63,7 +80,7 @@ function ProfileCard({ member }: { member: any }) {
       <div className="p-6 grid sm:grid-cols-2 gap-x-8 gap-y-6">
         <PreferenceSection title="Interests" items={profile.interests} isMe={isMe} isAdult={isAdultViewer} />
         <PreferenceSection title="Dislikes" items={profile.dislikes} isMe={isMe} isAdult={isAdultViewer} />
-        
+
         <div className="sm:col-span-2 grid sm:grid-cols-3 gap-6 pt-4 border-t border-border text-sm">
           <div>
             <span className="text-muted-foreground block mb-1">Energy Level</span>
@@ -83,10 +100,9 @@ function ProfileCard({ member }: { member: any }) {
   );
 }
 
-function PreferenceSection({ title, items, isMe, isAdult }: { title: string, items: any[], isMe: boolean, isAdult: boolean }) {
+function PreferenceSection({ title, items, isMe, isAdult }: { title: string; items: any[]; isMe: boolean; isAdult: boolean }) {
   if (!items || items.length === 0) return null;
 
-  // Filter based on privacy rules
   const visibleItems = items.filter(item => {
     if (isMe) return true;
     if (item.visibility === 'share-exact') return true;

@@ -1,28 +1,29 @@
 import React, { useState } from "react";
 import { Link } from "wouter";
 import { useListInvitations } from "@workspace/api-client-react";
-import { useViewerStore } from "@/store/viewer";
-import { Calendar, Clock, MapPin, Sparkles, Send, Inbox } from "lucide-react";
+import { useAuth } from "@/lib/auth";
+import { Calendar, Clock, Sparkles, Send, Inbox } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function InvitationsTab() {
-  const { viewerId } = useViewerStore();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<"received" | "sent">("received");
-  
+
   const { data: invitations, isLoading } = useListInvitations(
-    { memberId: viewerId },
-    { query: { enabled: !!viewerId, queryKey: ["invitations", viewerId] } }
+    {},
+    { query: { queryKey: ["invitations"] } }
   );
 
   if (isLoading) return <div className="p-6">Loading invitations...</div>;
 
-  const filtered = invitations?.filter(inv => 
-    activeTab === "received" ? inv.inviteeIds.includes(viewerId) : inv.inviterId === viewerId
+  const filtered = invitations?.filter((inv: any) =>
+    activeTab === "received"
+      ? inv.inviteeIds.includes(user?.id ?? -1)
+      : inv.inviterId === user?.id
   ) || [];
 
   return (
     <div className="p-6 md:p-10 pt-0 max-w-4xl mx-auto space-y-6">
-      
       <div className="flex bg-secondary/50 p-1 rounded-lg w-max mb-6">
         <button
           onClick={() => setActiveTab("received")}
@@ -46,12 +47,18 @@ export default function InvitationsTab() {
 
       {filtered.length === 0 ? (
         <div className="text-center py-16 px-4 border border-border border-dashed rounded-2xl bg-card/30">
-          <p className="text-muted-foreground text-sm">No {activeTab} invitations right now.</p>
+          <Inbox className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-40" />
+          <p className="font-serif text-lg mb-1">No {activeTab} invitations</p>
+          <p className="text-muted-foreground text-sm">
+            {activeTab === "received"
+              ? "When someone invites you to an experience, it will appear here."
+              : "Send an invitation from the Discover tab to get started."}
+          </p>
         </div>
       ) : (
         <div className="grid gap-4">
-          {filtered.map(inv => (
-            <InvitationCard key={inv.id} invitation={inv} viewerId={viewerId} />
+          {filtered.map((inv: any) => (
+            <InvitationCard key={inv.id} invitation={inv} userId={user?.id ?? -1} />
           ))}
         </div>
       )}
@@ -59,12 +66,12 @@ export default function InvitationsTab() {
   );
 }
 
-function InvitationCard({ invitation, viewerId }: { invitation: any, viewerId: string }) {
+function InvitationCard({ invitation, userId }: { invitation: any; userId: number }) {
   const isSurprise = invitation.isSurprise;
-  const isInviter = invitation.inviterId === viewerId;
+  const isInviter = invitation.inviterId === userId;
 
   const getStatusColor = (status: string) => {
-    switch(status) {
+    switch (status) {
       case 'accepted': return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300';
       case 'pending': return 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300';
       case 'declined': return 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300';
@@ -82,16 +89,18 @@ function InvitationCard({ invitation, viewerId }: { invitation: any, viewerId: s
             </div>
           </div>
         )}
-        
+
         <div className="flex justify-between items-start mb-3">
           <div>
             <h3 className="font-serif text-xl font-medium text-foreground">
-              {isSurprise && !isInviter && invitation.detailLevel === 'hidden' 
-                ? "Surprise Date" 
+              {isSurprise && !isInviter && invitation.detailLevel === 'hidden'
+                ? "Surprise Date"
                 : invitation.experienceTitle || "Unknown Experience"}
             </h3>
             <p className="text-sm text-muted-foreground mt-0.5">
-              {isInviter ? `To: ${invitation.inviteeIds.join(', ')}` : `From: ${invitation.inviterId}`}
+              {isInviter
+                ? `To: ${Array.isArray(invitation.inviteeIds) ? invitation.inviteeIds.join(', ') : invitation.inviteeIds}`
+                : `From: ${invitation.inviterName ?? invitation.inviterId}`}
             </p>
           </div>
           <span className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider", getStatusColor(invitation.status))}>

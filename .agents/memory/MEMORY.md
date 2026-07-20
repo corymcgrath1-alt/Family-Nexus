@@ -1,0 +1,1 @@
+- [Lighthouse Auth Architecture](lighthouse-auth-arch.md) — session table must be pre-created; use bcryptjs not bcrypt; inviteeIds are integer arrays; .d.ts imports break esbuild.

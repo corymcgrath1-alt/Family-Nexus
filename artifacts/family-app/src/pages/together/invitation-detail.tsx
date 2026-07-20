@@ -1,13 +1,13 @@
 import React, { useState } from "react";
-import { Link, useParams } from "wouter";
-import { useGetInvitation, useUpdateInvitation, useCreateCalendarEvent, useListPlanningTasks, useUpdatePlanningTask } from "@workspace/api-client-react";
-import { useViewerStore } from "@/store/viewer";
-import { ArrowLeft, Check, Calendar as CalendarIcon, Clock, Sparkles, Send, X, AlertCircle } from "lucide-react";
+import { useParams } from "wouter";
+import { useGetInvitation, useUpdateInvitation, useListPlanningTasks, useUpdatePlanningTask } from "@workspace/api-client-react";
+import { useAuth } from "@/lib/auth";
+import { ArrowLeft, Check, Calendar as CalendarIcon, Clock, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function InvitationDetailPage() {
   const params = useParams();
-  const { viewerId, setViewerId } = useViewerStore();
+  const { user } = useAuth();
   const [rsvpNote, setRsvpNote] = useState("");
   const [showRsvpText, setShowRsvpText] = useState(false);
   const [actionType, setActionType] = useState<"accepted" | "suggested-change" | "needs-info" | "declined" | null>(null);
@@ -21,12 +21,18 @@ export default function InvitationDetailPage() {
   });
 
   const updateInv = useUpdateInvitation();
-  const createTask = useUpdatePlanningTask();
+  const updateTask = useUpdatePlanningTask();
 
   if (isLoading) return <div className="p-10 text-center animate-pulse">Loading invitation...</div>;
   if (!inv) return <div className="p-10 text-center">Invitation not found</div>;
 
-  const isInviter = inv.inviterId === viewerId;
+  // inviterId and inviteeIds are integers from the API
+  const isInviter = user?.id !== undefined && (Number(inv.inviterId) === user.id || inv.inviterId === user.id);
+  const isInvitee = user?.id !== undefined && (
+    Array.isArray(inv.inviteeIds)
+      ? inv.inviteeIds.some((id: unknown) => Number(id) === user.id)
+      : false
+  );
   const isSurprise = inv.isSurprise && !isInviter && inv.detailLevel === 'hidden';
 
   const handleRsvp = () => {
@@ -43,23 +49,10 @@ export default function InvitationDetailPage() {
 
   return (
     <div className="max-w-4xl mx-auto w-full p-6 md:p-10 space-y-8 pb-20">
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center mb-2">
         <button onClick={() => window.history.back()} className="text-sm text-muted-foreground flex items-center gap-1 hover:text-foreground">
           <ArrowLeft className="w-4 h-4" /> Back
         </button>
-        
-        {/* Demo Toggle - very clear since it's asked in brief */}
-        <div className="flex items-center gap-2 bg-secondary p-1 rounded-lg">
-          <span className="text-[10px] uppercase font-bold text-muted-foreground ml-2">Demo View As:</span>
-          {["alex", "morgan"].map(id => (
-            <button key={id} onClick={() => setViewerId(id as any)} className={cn(
-              "px-3 py-1 rounded text-xs font-medium capitalize transition-colors",
-              viewerId === id ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
-            )}>
-              {id}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Main Card */}
@@ -69,7 +62,7 @@ export default function InvitationDetailPage() {
           isSurprise ? "bg-primary/20 text-primary-foreground" : "bg-muted"
         )}>
           {isSurprise && <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] mix-blend-overlay"></div>}
-          
+
           <div className="relative z-10 flex flex-col items-center text-center">
             <div className="flex items-center gap-2 mb-6">
               <span className="px-3 py-1 rounded-full bg-background/50 backdrop-blur-md text-xs font-bold uppercase tracking-wider text-foreground border border-border/10">
@@ -88,9 +81,12 @@ export default function InvitationDetailPage() {
             <h1 className={cn("text-4xl md:text-5xl font-serif mb-4", isSurprise ? "text-primary" : "text-foreground")}>
               {isSurprise ? "A Surprise Experience" : inv.experienceTitle}
             </h1>
-            
+
             <p className={cn("text-lg", isSurprise ? "text-primary/80" : "text-muted-foreground")}>
-              From <span className="capitalize font-medium">{inv.inviterId}</span>
+              {isInviter
+                ? <span className="font-medium">Your invitation</span>
+                : <>From <span className="font-medium">{(inv as any).inviterName ?? inv.inviterId}</span></>
+              }
             </p>
 
             {inv.purpose && (
@@ -173,31 +169,31 @@ export default function InvitationDetailPage() {
       </div>
 
       {/* RSVP Section for Invitee */}
-      {!isInviter && inv.status === 'pending' && (
+      {isInvitee && !isInviter && inv.status === 'pending' && (
         <div className="bg-card border border-border p-6 rounded-2xl shadow-sm animate-in fade-in slide-in-from-bottom-4">
           <h3 className="font-serif text-xl mb-4">How does this sound?</h3>
-          
+
           {!showRsvpText ? (
             <div className="flex flex-wrap gap-3">
-              <button 
-                onClick={() => { setActionType("accepted"); updateInv.mutate({ id: inv.id, data: { status: "accepted", rsvpResponse: "accepted" }}); }}
+              <button
+                onClick={() => { setActionType("accepted"); updateInv.mutate({ id: inv.id, data: { status: "accepted", rsvpResponse: "accepted" } }); }}
                 className="px-6 py-3 rounded-xl bg-primary text-primary-foreground font-medium hover:bg-primary/90 transition-colors flex items-center gap-2"
               >
                 <Check className="w-4 h-4" /> Yes, let's do it
               </button>
-              <button 
+              <button
                 onClick={() => { setActionType("suggested-change"); setShowRsvpText(true); }}
                 className="px-6 py-3 rounded-xl bg-secondary text-secondary-foreground font-medium hover:bg-secondary/80 transition-colors"
               >
                 Suggest another time
               </button>
-              <button 
+              <button
                 onClick={() => { setActionType("needs-info"); setShowRsvpText(true); }}
                 className="px-6 py-3 rounded-xl bg-card border border-border font-medium hover:bg-secondary transition-colors"
               >
                 Ask a question
               </button>
-              <button 
+              <button
                 onClick={() => { setActionType("declined"); setShowRsvpText(true); }}
                 className="px-6 py-3 rounded-xl bg-card border border-border text-muted-foreground font-medium hover:bg-rose-50 hover:text-rose-600 transition-colors ml-auto"
               >
@@ -218,14 +214,14 @@ export default function InvitationDetailPage() {
                 rows={3}
               />
               <div className="flex gap-3">
-                <button 
+                <button
                   onClick={handleRsvp}
                   disabled={updateInv.isPending}
                   className="px-6 py-2.5 rounded-xl bg-primary text-primary-foreground font-medium"
                 >
                   Send Response
                 </button>
-                <button 
+                <button
                   onClick={() => setShowRsvpText(false)}
                   className="px-6 py-2.5 rounded-xl bg-secondary text-secondary-foreground font-medium"
                 >
@@ -246,24 +242,22 @@ export default function InvitationDetailPage() {
             </div>
             <div>
               <h3 className="font-serif text-xl text-primary">They said yes!</h3>
-              <p className="text-sm text-primary/80">Morgan accepted the invitation.</p>
+              <p className="text-sm text-primary/80">Your invitation was accepted.</p>
             </div>
           </div>
-          
+
           <div className="bg-card rounded-xl p-5 border border-border mt-4">
-            <h4 className="font-medium mb-4 flex items-center justify-between">
-              Planning Checklist
-            </h4>
-            
+            <h4 className="font-medium mb-4">Planning Checklist</h4>
+
             {tasks && tasks.length > 0 ? (
               <div className="space-y-2">
                 {tasks.map((task: any) => (
                   <label key={task.id} className="flex items-start gap-3 p-3 rounded-lg hover:bg-secondary/30 cursor-pointer transition-colors group">
-                    <input 
-                      type="checkbox" 
-                      className="mt-1 accent-primary w-4 h-4" 
+                    <input
+                      type="checkbox"
+                      className="mt-1 accent-primary w-4 h-4"
                       checked={task.completed}
-                      onChange={() => createTask.mutate({ id: task.id, data: { completed: !task.completed }})}
+                      onChange={() => updateTask.mutate({ id: task.id, data: { completed: !task.completed } })}
                     />
                     <span className={cn("text-sm transition-colors", task.completed ? "text-muted-foreground line-through" : "text-foreground group-hover:text-primary")}>
                       {task.title}

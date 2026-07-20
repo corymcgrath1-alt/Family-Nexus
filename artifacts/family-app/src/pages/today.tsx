@@ -1,15 +1,20 @@
-import React from "react";
+import React, { useState } from "react";
 import { Link } from "wouter";
 import { Calendar, CheckCircle2, Clock, MapPin, Search } from "lucide-react";
 import { useGetTodaySummary, useUpdatePlanningTask } from "@workspace/api-client-react";
-import { useViewerStore } from "@/store/viewer";
+import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 
 export default function TodayPage() {
-  const { viewerId } = useViewerStore();
-  const { data: summary, isLoading } = useGetTodaySummary({ viewerId }, { query: { enabled: !!viewerId, queryKey: ["today", viewerId] } });
-  
+  const { user } = useAuth();
+  const [dismissed, setDismissed] = useState(() => !!localStorage.getItem('lh_demo_dismissed'));
+
+  const { data: summary, isLoading } = useGetTodaySummary(
+    {},
+    { query: { queryKey: ["today"] } }
+  );
+
   const updateTask = useUpdatePlanningTask();
 
   if (isLoading) {
@@ -24,22 +29,38 @@ export default function TodayPage() {
 
   return (
     <div className="flex-1 p-6 md:p-10 lg:p-12 max-w-4xl mx-auto w-full space-y-10">
+      {!dismissed && (
+        <div className="mb-4 flex items-center gap-3 rounded-lg border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-muted-foreground">
+          <span className="flex-1">Demo — try signing in as the other account to see both perspectives.</span>
+          <button
+            onClick={() => { localStorage.setItem('lh_demo_dismissed', '1'); setDismissed(true); }}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       <header>
-        <h1 className="text-3xl md:text-4xl font-serif text-foreground mb-2">Good morning, {viewerId}.</h1>
-        <p className="text-muted-foreground font-medium">It's {new Date(summary.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}.</p>
+        <h1 className="text-3xl md:text-4xl font-serif text-foreground mb-2">
+          Good morning, {user?.displayName ?? ''}.
+        </h1>
+        <p className="text-muted-foreground font-medium">
+          It's {new Date(summary.date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}.
+        </p>
       </header>
 
       {/* Featured Experience */}
       <section>
         <h2 className="text-sm font-semibold tracking-wider text-muted-foreground uppercase mb-4">Recommended for You</h2>
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           className="group relative overflow-hidden rounded-2xl bg-card border border-border shadow-sm hover-elevate transition-all"
         >
           <div className="aspect-[21/9] sm:aspect-[21/8] bg-muted relative overflow-hidden">
-            <img 
-              src={summary.featuredExperience.imageUrl} 
+            <img
+              src={summary.featuredExperience.imageUrl}
               alt={summary.featuredExperience.title}
               className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
             />
@@ -57,13 +78,13 @@ export default function TodayPage() {
               <h3 className="text-2xl font-serif font-medium">{summary.featuredExperience.title}</h3>
             </div>
           </div>
-          
+
           <div className="p-5 md:p-6 flex flex-col md:flex-row gap-6 md:items-center justify-between bg-card relative z-10">
             <div className="flex-1">
               <p className="text-foreground text-sm font-medium mb-1">Why it fits right now:</p>
               <p className="text-muted-foreground text-sm leading-relaxed">{summary.featuredExperience.whyItFits}</p>
             </div>
-            <Link 
+            <Link
               href={`/together/experiences/${summary.featuredExperience.id}?action=invite`}
               className="shrink-0 bg-primary text-primary-foreground px-6 py-2.5 rounded-lg font-medium text-sm text-center hover:bg-primary/90 transition-colors"
             >
@@ -87,10 +108,10 @@ export default function TodayPage() {
                 <h4 className="font-medium text-foreground">{summary.upcomingCalendarEvent.title}</h4>
                 <div className="flex items-center text-xs text-muted-foreground mt-1 gap-3">
                   {summary.upcomingCalendarEvent.time && (
-                    <span className="flex items-center gap-1"><Clock className="w-3 h-3"/> {summary.upcomingCalendarEvent.time}</span>
+                    <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {summary.upcomingCalendarEvent.time}</span>
                   )}
                   {summary.upcomingCalendarEvent.location && (
-                    <span className="flex items-center gap-1"><MapPin className="w-3 h-3"/> {summary.upcomingCalendarEvent.location}</span>
+                    <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {summary.upcomingCalendarEvent.location}</span>
                   )}
                 </div>
               </div>
@@ -114,7 +135,7 @@ export default function TodayPage() {
                 </span>
               </div>
               <p className="text-sm text-muted-foreground line-clamp-1">{summary.pendingInvitation.message || summary.pendingInvitation.purpose}</p>
-              <Link 
+              <Link
                 href={`/together/invitations/${summary.pendingInvitation.id}`}
                 className="text-sm font-medium text-primary hover:underline mt-1 self-start"
               >
@@ -134,7 +155,7 @@ export default function TodayPage() {
         <section className="space-y-4">
           <h2 className="text-sm font-semibold tracking-wider text-muted-foreground uppercase">Needs Attention</h2>
           <div className="p-4 rounded-xl border border-border bg-card flex items-start gap-3">
-            <button 
+            <button
               onClick={() => updateTask.mutate({ id: summary.urgentPlanningTask.id, data: { completed: !summary.urgentPlanningTask.completed } })}
               className={cn(
                 "mt-0.5 w-5 h-5 rounded-full border flex items-center justify-center transition-colors shrink-0",
@@ -158,9 +179,9 @@ export default function TodayPage() {
       {/* Quick Actions */}
       <section className="pt-4 border-t border-border/50">
         <div className="flex flex-wrap gap-2">
-          {summary.quickActions.map(action => (
-            <Link 
-              key={action.id} 
+          {summary.quickActions.map((action: any) => (
+            <Link
+              key={action.id}
               href={action.action}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors"
             >

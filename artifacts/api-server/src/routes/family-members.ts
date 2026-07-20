@@ -1,84 +1,115 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
-import { db, experienceProfilesTable } from "@workspace/db";
-import { FAMILY_MEMBERS, DEFAULT_PROFILES } from "../lib/mock-family";
+import { eq, and } from "drizzle-orm";
+import { db, usersTable, experienceProfilesTable } from "@workspace/db";
+import { requireAuth } from "../middleware/auth";
+import { DEFAULT_PROFILES } from "../lib/mock-family";
 
 const router: IRouter = Router();
+router.use(requireAuth);
 
-router.get("/family-members", async (_req, res): Promise<void> => {
-  res.json(FAMILY_MEMBERS);
+function safeUser(u: typeof usersTable.$inferSelect) {
+  const { passwordHash: _pw, ...rest } = u;
+  return {
+    ...rest,
+    createdAt: u.createdAt.toISOString(),
+    updatedAt: u.updatedAt.toISOString(),
+    messagesLastSeenAt: u.messagesLastSeenAt?.toISOString() ?? null,
+  };
+}
+
+function applyPrivacyFilter(profile: Record<string, unknown>, isOwner: boolean): Record<string, unknown> {
+  if (isOwner) return profile;
+  const VISIBLE = new Set(["share-exact", "share-summary", "surprise-ok"]);
+  const filterTraits = (arr: unknown): unknown[] => {
+    if (!Array.isArray(arr)) return [];
+    return arr.filter((t: unknown) => {
+      const trait = t as { visibility?: string };
+      return VISIBLE.has(trait.visibility ?? "");
+    });
+  };
+  return {
+    ...profile,
+    interests: filterTraits(profile.interests),
+    dislikes: filterTraits(profile.dislikes),
+    curiosityItems: filterTraits(profile.curiosityItems),
+    foodPreferences: filterTraits(profile.foodPreferences),
+  };
+}
+
+router.get("/family-members", async (req, res): Promise<void> => {
+  const users = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.householdId, req.session.householdId!));
+  res.json(users.map(safeUser));
 });
 
 router.get("/family-members/:id", async (req, res): Promise<void> => {
-  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const member = FAMILY_MEMBERS.find((m) => m.id === raw);
-  if (!member) {
-    res.status(404).json({ error: "Family member not found" });
-    return;
-  }
-  res.json(member);
+  const id = Number(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const [user] = await db.select().from(usersTable)
+    .where(and(eq(usersTable.id, id), eq(usersTable.householdId, req.session.householdId!)));
+  if (!user) { res.status(404).json({ error: "Not found" }); return; }
+  res.json(safeUser(user));
 });
 
 router.get("/family-members/:id/profile", async (req, res): Promise<void> => {
-  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const member = FAMILY_MEMBERS.find((m) => m.id === raw);
-  if (!member) {
-    res.status(404).json({ error: "Family member not found" });
-    return;
-  }
+  const id = Number(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  const [dbProfile] = await db
-    .select()
-    .from(experienceProfilesTable)
-    .where(eq(experienceProfilesTable.memberId, raw));
+  // Verify member belongs to same household
+  const [member] = await db.select().from(usersTable)
+    .where(and(eq(usersTable.id, id), eq(usersTable.householdId, req.session.householdId!)));
+  if (!member) { res.status(404).json({ error: "Not found" }); return; }
 
+  const isOwner = req.session.userId === id;
+
+  const [dbProfile] = await db.select().from(experienceProfilesTable)
+    .where(eq(experienceProfilesTable.userId, id));
+
+  let profile: Record<string, unknown>;
   if (dbProfile) {
-    res.json({ ...dbProfile, updatedAt: dbProfile.updatedAt.toISOString() });
-    return;
+    profile = { ...dbProfile, updatedAt: dbProfile.updatedAt.toISOString() };
+  } else {
+    // Fall back to seeded default profile keyed by display name
+    const key = member.displayName.toLowerCase();
+    profile = (DEFAULT_PROFILES[key] ?? {}) as Record<string, unknown>;
   }
 
-  // Return seeded default profile
-  const defaultProfile = DEFAULT_PROFILES[raw];
-  if (defaultProfile) {
-    res.json(defaultProfile);
-    return;
-  }
-
-  res.status(404).json({ error: "Profile not found" });
+  res.json(applyPrivacyFilter(profile, isOwner));
 });
 
 router.patch("/family-members/:id/profile", async (req, res): Promise<void> => {
-  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const member = FAMILY_MEMBERS.find((m) => m.id === raw);
-  if (!member) {
-    res.status(404).json({ error: "Family member not found" });
+  const id = Number(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  // Only the owner can edit their profile
+  if (req.session.userId !== id) {
+    res.status(403).json({ error: "You can only edit your own profile" });
     return;
   }
 
   const updates = req.body as Record<string, unknown>;
 
-  const [existing] = await db
-    .select()
-    .from(experienceProfilesTable)
-    .where(eq(experienceProfilesTable.memberId, raw));
+  const [existing] = await db.select().from(experienceProfilesTable)
+    .where(eq(experienceProfilesTable.userId, id));
 
   if (existing) {
-    const [updated] = await db
-      .update(experienceProfilesTable)
+    const [updated] = await db.update(experienceProfilesTable)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(experienceProfilesTable.memberId, raw))
+      .where(eq(experienceProfilesTable.userId, id))
       .returning();
     res.json({ ...updated, updatedAt: updated.updatedAt.toISOString() });
     return;
   }
 
-  // Create from default + updates
-  const defaults = DEFAULT_PROFILES[raw] as Record<string, unknown> ?? {};
-  const [created] = await db
-    .insert(experienceProfilesTable)
-    .values({ memberId: raw, ...defaults, ...updates } as Parameters<typeof db.insert>[0]["$inferInsert"])
-    .returning();
-  res.json({ ...created, updatedAt: created.updatedAt.toISOString() });
+  const [created] = await db.insert(experienceProfilesTable).values({
+    householdId: req.session.householdId!,
+    userId: id,
+    ...updates,
+  } as Parameters<typeof db.insert>[0]["$inferInsert"]).returning();
+  res.status(201).json({ ...created, updatedAt: created.updatedAt.toISOString() });
 });
 
 export default router;

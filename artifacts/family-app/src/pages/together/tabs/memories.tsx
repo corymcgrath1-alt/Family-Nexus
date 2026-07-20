@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { Link } from "wouter";
-import { useListExperiences, useListMemories, useUpdateMemory } from "@workspace/api-client-react";
+import { useListMemories, useUpdateMemory } from "@workspace/api-client-react";
+import { Bookmark } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -26,8 +26,8 @@ export default function MemoriesTab() {
             onClick={() => setStatusFilter(status)}
             className={cn(
               "px-4 py-1.5 rounded-full text-sm font-medium capitalize transition-colors",
-              statusFilter === status 
-                ? "bg-primary text-primary-foreground" 
+              statusFilter === status
+                ? "bg-primary text-primary-foreground"
                 : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
             )}
           >
@@ -37,13 +37,15 @@ export default function MemoriesTab() {
       </div>
 
       {(!memories || memories.length === 0) ? (
-        <div className="text-center py-20 bg-card border border-border rounded-xl">
-          <p className="text-muted-foreground text-sm">No {statusFilter} memories found.</p>
+        <div className="text-center py-20 border border-dashed border-border rounded-2xl bg-card/50">
+          <Bookmark className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-40" />
+          <p className="font-serif text-lg mb-1">Nothing saved yet</p>
+          <p className="text-muted-foreground text-sm">Save ideas from messages or browse the catalogue.</p>
         </div>
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           <AnimatePresence>
-            {memories.map(memory => (
+            {memories.map((memory: any) => (
               <motion.div
                 key={memory.id}
                 layout
@@ -69,11 +71,9 @@ export default function MemoriesTab() {
                 </div>
 
                 {memory.description && (
-                  <p className="text-sm text-muted-foreground mb-4 line-clamp-3">
-                    {memory.description}
-                  </p>
+                  <p className="text-sm text-muted-foreground mb-4 line-clamp-3">{memory.description}</p>
                 )}
-                
+
                 {memory.sourceMessage && (
                   <div className="bg-secondary/50 p-3 rounded-lg text-sm italic text-secondary-foreground mb-4 border-l-2 border-primary/40">
                     "{memory.sourceMessage}"

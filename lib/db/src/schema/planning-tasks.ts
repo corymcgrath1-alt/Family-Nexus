@@ -1,9 +1,10 @@
-import { pgTable, text, serial, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, boolean, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
 export const planningTasksTable = pgTable("planning_tasks", {
   id: serial("id").primaryKey(),
+  householdId: integer("household_id").notNull(),
   slug: text("slug").notNull().unique(),
   title: text("title").notNull(),
   description: text("description"),
@@ -12,13 +13,10 @@ export const planningTasksTable = pgTable("planning_tasks", {
   dueDate: text("due_date"),
   calendarEventId: text("calendar_event_id"),
   invitationId: text("invitation_id"),
-  assigneeId: text("assignee_id"),
+  assigneeId: integer("assignee_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const insertPlanningTaskSchema = createInsertSchema(planningTasksTable).omit({
-  id: true,
-  createdAt: true,
-});
+export const insertPlanningTaskSchema = createInsertSchema(planningTasksTable).omit({ id: true, createdAt: true });
 export type InsertPlanningTask = z.infer<typeof insertPlanningTaskSchema>;
 export type PlanningTask = typeof planningTasksTable.$inferSelect;

@@ -4,12 +4,13 @@ import { z } from "zod/v4";
 
 export const calendarEventsTable = pgTable("calendar_events", {
   id: serial("id").primaryKey(),
+  householdId: integer("household_id").notNull(),
   slug: text("slug").notNull().unique(),
   title: text("title").notNull(),
   date: text("date").notNull(),
   time: text("time"),
   durationMinutes: integer("duration_minutes"),
-  participantIds: jsonb("participant_ids").notNull().default([]),
+  participantIds: jsonb("participant_ids").notNull().default([]), // array of user IDs
   experienceId: text("experience_id"),
   invitationId: text("invitation_id"),
   notes: text("notes"),
@@ -17,9 +18,6 @@ export const calendarEventsTable = pgTable("calendar_events", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const insertCalendarEventSchema = createInsertSchema(calendarEventsTable).omit({
-  id: true,
-  createdAt: true,
-});
+export const insertCalendarEventSchema = createInsertSchema(calendarEventsTable).omit({ id: true, createdAt: true });
 export type InsertCalendarEvent = z.infer<typeof insertCalendarEventSchema>;
 export type CalendarEvent = typeof calendarEventsTable.$inferSelect;

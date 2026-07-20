@@ -1,10 +1,11 @@
-import { pgTable, text, serial, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, integer, text, serial, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
 export const experienceProfilesTable = pgTable("experience_profiles", {
   id: serial("id").primaryKey(),
-  memberId: text("member_id").notNull().unique(),
+  householdId: integer("household_id").notNull(),
+  userId: integer("user_id").notNull().unique(),
   interests: jsonb("interests").notNull().default([]),
   dislikes: jsonb("dislikes").notNull().default([]),
   curiosityItems: jsonb("curiosity_items").notNull().default([]),
@@ -22,9 +23,6 @@ export const experienceProfilesTable = pgTable("experience_profiles", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const insertExperienceProfileSchema = createInsertSchema(experienceProfilesTable).omit({
-  id: true,
-  updatedAt: true,
-});
+export const insertExperienceProfileSchema = createInsertSchema(experienceProfilesTable).omit({ id: true, updatedAt: true });
 export type InsertExperienceProfile = z.infer<typeof insertExperienceProfileSchema>;
 export type ExperienceProfile = typeof experienceProfilesTable.$inferSelect;

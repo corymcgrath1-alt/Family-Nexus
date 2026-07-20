@@ -1,11 +1,11 @@
 import React from "react";
 import { Shield, Lock, FileText, Key, EyeOff } from "lucide-react";
-import { useViewerStore } from "@/store/viewer";
+import { useAuth } from "@/lib/auth";
 
 export default function VaultPage() {
-  const { viewerId } = useViewerStore();
-  
-  if (viewerId === "jamie") {
+  const { user } = useAuth();
+
+  if (user?.role === "child") {
     return (
       <div className="flex-1 p-6 md:p-10 flex flex-col items-center justify-center text-center max-w-md mx-auto">
         <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-6">
@@ -30,9 +30,9 @@ export default function VaultPage() {
       <div className="bg-primary/5 border border-primary/20 rounded-xl p-5 flex items-start gap-4">
         <EyeOff className="w-5 h-5 text-primary shrink-0 mt-0.5" />
         <div>
-          <h3 className="font-medium text-primary mb-1">Privacy Guarantee</h3>
+          <h3 className="font-medium text-primary mb-1">Privacy Notice</h3>
           <p className="text-sm text-primary/80 leading-relaxed">
-            Your private documents and notes are visible only to you. One family member cannot search or read another adult's private information. Everything here is end-to-end encrypted.
+            Your account access is protected by your email and password. This version does not use end-to-end encryption and is not suitable for medical records, banking credentials, identity documents, or other highly sensitive files. Document storage is coming in a future version.
           </p>
         </div>
       </div>
