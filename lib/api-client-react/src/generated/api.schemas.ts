@@ -10,6 +10,243 @@ export interface ErrorResponse {
   details?: string[];
 }
 
+export type SignalDefinitionKey = typeof SignalDefinitionKey[keyof typeof SignalDefinitionKey];
+
+
+export const SignalDefinitionKey = {
+  libraryarchived_itemscount: 'library.archived_items.count',
+  libraryhousehold_itemscount: 'library.household_items.count',
+  libraryitems_by_categorycount: 'library.items_by_category.count',
+  libraryitems_by_sensitivitycount: 'library.items_by_sensitivity.count',
+  libraryowned_itemscount: 'library.owned_items.count',
+  libraryshared_with_mecount: 'library.shared_with_me.count',
+  libraryvisible_itemscount: 'library.visible_items.count',
+} as const;
+
+export interface SignalInputRequirements {
+  source: 'family_library';
+  authorization: 'currently_visible_rows';
+  /**
+     * @minItems 2
+     * @maxItems 2
+     */
+  includedStatuses: ['active', 'archived'];
+  /**
+     * @minItems 1
+     * @maxItems 1
+     */
+  excludedStatuses: ['deleted'];
+}
+
+export type LibraryItemCategory = typeof LibraryItemCategory[keyof typeof LibraryItemCategory];
+
+
+export const LibraryItemCategory = {
+  note: 'note',
+  'document-reference': 'document-reference',
+  instruction: 'instruction',
+  decision: 'decision',
+  memory: 'memory',
+  'medical-reference': 'medical-reference',
+  'household-record': 'household-record',
+  'vehicle-record': 'vehicle-record',
+  'career-record': 'career-record',
+  other: 'other',
+} as const;
+
+export type LibraryItemSensitivity = typeof LibraryItemSensitivity[keyof typeof LibraryItemSensitivity];
+
+
+export const LibraryItemSensitivity = {
+  standard: 'standard',
+  personal: 'personal',
+  sensitive: 'sensitive',
+  restricted: 'restricted',
+} as const;
+
+export type SignalOutputShape = {
+  kind: 'scalar_count';
+} | {
+  kind: 'dimensioned_count';
+  dimension: 'category';
+  allowedValues: LibraryItemCategory[];
+} | {
+  kind: 'dimensioned_count';
+  dimension: 'sensitivity';
+  allowedValues: LibraryItemSensitivity[];
+};
+
+export interface SignalMissingDataSemantics {
+  calculation: 'zero_when_no_visible_rows';
+  sourceCompleteness: 'unknown_user_controlled';
+  interpretationWarning: string;
+}
+
+export interface SignalBaselineSemantics {
+  kind: 'none';
+  explanation: string;
+}
+
+export interface SignalEvidenceThreshold {
+  minimumVisibleRows: 0;
+  semantics: string;
+}
+
+export interface MetricUncertainty {
+  calculation: 'none';
+  sourceCompleteness: 'unknown_user_controlled';
+  interpretationWarning: string;
+}
+
+export interface SignalDefinition {
+  definitionKey: SignalDefinitionKey;
+  name: string;
+  domain: 'family_library';
+  unit: 'items';
+  timeWindow: 'current_state';
+  formulaVersion: 'v1';
+  definition: string;
+  inputRequirements: SignalInputRequirements;
+  evidenceKind: 'deterministic_derived_metric';
+  outputShape: SignalOutputShape;
+  missingDataSemantics: SignalMissingDataSemantics;
+  baselineSemantics: SignalBaselineSemantics;
+  evidenceThreshold: SignalEvidenceThreshold;
+  uncertaintySemantics: MetricUncertainty;
+  /** @minItems 1 */
+  allowedUses: string[];
+  /** @minItems 1 */
+  prohibitedUses: string[];
+  sensitivity: 'personal';
+  ownerScope: 'requesting_user';
+  defaultVisibility: 'private';
+  explanation: string;
+  status: 'active';
+}
+
+export interface SignalDefinitionListResponse {
+  catalogVersion: 'library-insights.v1';
+  /**
+     * @minItems 7
+     * @maxItems 7
+     */
+  definitions: SignalDefinition[];
+}
+
+export interface MetricCoverage {
+  includedRows: 'all_non_deleted_visible_family_library_rows';
+  rowLimitApplied: false;
+  deletedRowsExcluded: true;
+  exactForDatabaseSnapshot: true;
+  sourceCompleteness: 'unknown_user_controlled';
+  explanation: string;
+}
+
+export interface ScalarInsightValue {
+  definitionKey: SignalDefinitionKey;
+  formulaVersion: 'v1';
+  /** @minimum 0 */
+  value: number;
+}
+
+export interface LibraryCategoryCountMap {
+  /** @minimum 0 */
+  note: number;
+  /** @minimum 0 */
+  'document-reference': number;
+  /** @minimum 0 */
+  instruction: number;
+  /** @minimum 0 */
+  decision: number;
+  /** @minimum 0 */
+  memory: number;
+  /** @minimum 0 */
+  'medical-reference': number;
+  /** @minimum 0 */
+  'household-record': number;
+  /** @minimum 0 */
+  'vehicle-record': number;
+  /** @minimum 0 */
+  'career-record': number;
+  /** @minimum 0 */
+  other: number;
+}
+
+export interface LibrarySensitivityCountMap {
+  /** @minimum 0 */
+  standard: number;
+  /** @minimum 0 */
+  personal: number;
+  /** @minimum 0 */
+  sensitive: number;
+  /** @minimum 0 */
+  restricted: number;
+}
+
+export interface CategoryInsightValue {
+  definitionKey: 'library.items_by_category.count';
+  formulaVersion: 'v1';
+  values: LibraryCategoryCountMap;
+}
+
+export interface SensitivityInsightValue {
+  definitionKey: 'library.items_by_sensitivity.count';
+  formulaVersion: 'v1';
+  values: LibrarySensitivityCountMap;
+}
+
+export type DimensionedInsightValue = CategoryInsightValue | SensitivityInsightValue;
+
+export type LibraryInsightsResponseAuthorizationBoundaryItem = typeof LibraryInsightsResponseAuthorizationBoundaryItem[keyof typeof LibraryInsightsResponseAuthorizationBoundaryItem];
+
+
+export const LibraryInsightsResponseAuthorizationBoundaryItem = {
+  authenticated_session: 'authenticated_session',
+  transaction_scoped_actor: 'transaction_scoped_actor',
+  postgres_rls: 'postgres_rls',
+} as const;
+
+export type LibraryInsightsResponseMetrics = {
+  visibleItems: ScalarInsightValue;
+  ownedItems: ScalarInsightValue;
+  sharedWithMe: ScalarInsightValue;
+  householdItems: ScalarInsightValue;
+  archivedItems: ScalarInsightValue;
+  byCategory: CategoryInsightValue;
+  bySensitivity: SensitivityInsightValue;
+};
+
+export interface LibraryInsightsResponse {
+  catalogVersion: 'library-insights.v1';
+  calculatedAt: string;
+  /** @minimum 1 */
+  ownerUserId: number;
+  visibility: 'private';
+  evidenceKind: 'deterministic_derived_metric';
+  source: 'family_library';
+  /**
+     * @minItems 3
+     * @maxItems 3
+     */
+  authorizationBoundary: LibraryInsightsResponseAuthorizationBoundaryItem[];
+  coverage: MetricCoverage;
+  uncertainty: MetricUncertainty;
+  metrics: LibraryInsightsResponseMetrics;
+}
+
+export interface LibraryStatsResponse {
+  /** @minimum 0 */
+  visibleItems: number;
+  /** @minimum 0 */
+  ownedItems: number;
+  /** @minimum 0 */
+  sharedWithMe: number;
+  /** @minimum 0 */
+  householdItems: number;
+  byCategory: LibraryCategoryCountMap;
+  bySensitivity: LibrarySensitivityCountMap;
+}
+
 export type ConnectorStatus = typeof ConnectorStatus[keyof typeof ConnectorStatus];
 
 
@@ -118,32 +355,6 @@ export interface ConnectorCatalogDetailResponse {
   catalogVersion: 'connector-catalog.v1';
   connector: ConnectorDefinition;
 }
-
-export type LibraryItemCategory = typeof LibraryItemCategory[keyof typeof LibraryItemCategory];
-
-
-export const LibraryItemCategory = {
-  note: 'note',
-  'document-reference': 'document-reference',
-  instruction: 'instruction',
-  decision: 'decision',
-  memory: 'memory',
-  'medical-reference': 'medical-reference',
-  'household-record': 'household-record',
-  'vehicle-record': 'vehicle-record',
-  'career-record': 'career-record',
-  other: 'other',
-} as const;
-
-export type LibraryItemSensitivity = typeof LibraryItemSensitivity[keyof typeof LibraryItemSensitivity];
-
-
-export const LibraryItemSensitivity = {
-  standard: 'standard',
-  personal: 'personal',
-  sensitive: 'sensitive',
-  restricted: 'restricted',
-} as const;
 
 export type LibraryItemRetentionPolicy = typeof LibraryItemRetentionPolicy[keyof typeof LibraryItemRetentionPolicy];
 

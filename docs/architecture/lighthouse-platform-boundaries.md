@@ -2,7 +2,7 @@
 
 ## Current Implementation Status
 
-Lighthouse is currently a modular monolith prototype: one Vite app, one Express API, shared TypeScript libraries, and PostgreSQL through Drizzle. The code has session authentication, household membership, relationship-support experiences, messages, planning tasks, memories, profiles, reflections, Family Library records, sharing grants, redacted Library audit events, row-level security for the Lighthouse-owned privacy tables, an immutable connector capability catalog, and a bounded manual Library JSON import. It does not yet have production identity, application-wide row-level security for legacy tables, live external connectors, encryption-at-rest controls, or full consent lifecycle automation.
+Lighthouse is currently a modular monolith prototype: one Vite app, one Express API, shared TypeScript libraries, and PostgreSQL through Drizzle. The code has session authentication, household membership, relationship-support experiences, messages, planning tasks, memories, profiles, reflections, Family Library records, sharing grants, redacted Library audit events, row-level security for the Lighthouse-owned privacy tables, an immutable connector capability catalog, a bounded manual Library JSON import, and exact actor-scoped Library insights. It does not yet have production identity, application-wide row-level security for legacy tables, live external connectors, encryption-at-rest controls, or full consent lifecycle automation.
 
 ## Product Scope
 
@@ -50,6 +50,14 @@ Lighthouse Passport IDs are opaque, random, non-semantic identifiers for people.
 Lighthouse must not collapse a person into a universal number. Future analytics should use explainable, independently governed signal domains such as capacity, load, recovery, connection, time flexibility, household readiness, financial resilience, health follow-through, career momentum, and environmental friction.
 
 Every retained metric needs a name, definition, domain, unit, time window, formula/model version, input provenance, missing-data coverage, baseline, evidence threshold, uncertainty, sensitivity, allowed/prohibited uses, owner, visibility, explanation, timestamps, and disable/correction/rejection controls.
+
+## Deterministic Insights Boundary
+
+Phase 4A uses `signal_definitions` as the migration-governed canonical registry. Runtime roles can read active definitions but cannot create, update, or delete them. Definition changes require a reviewed migration and a formula-version change when semantics change.
+
+Library insights run synchronously inside the authenticated request transaction. A single aggregate SQL statement counts all non-deleted `library_items` visible through the requesting actor's PostgreSQL RLS context. It selects no title, body, source label, provenance, record ID, grant ID, or audit ID and returns no per-person dimensions. Registered category and sensitivity enums provide the complete, zero-filled dimension keys.
+
+Each response is private to the requesting user and exact for one database snapshot. Source completeness remains unknown because users control what enters the Library. The request creates no `signal_observations`, audit events, grants, records, or source rows; it is recalculated without shared actor caches or background work.
 
 ## Evidence Taxonomy
 

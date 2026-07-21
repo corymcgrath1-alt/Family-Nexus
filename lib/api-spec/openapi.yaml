@@ -34,6 +34,8 @@ tags:
     description: Read-only connector capability catalog
   - name: library
     description: Family Library records and privacy-safe manual import
+  - name: insights
+    description: Governed deterministic metrics over actor-visible Family Library rows
 
 paths:
   /healthz:
@@ -686,6 +688,114 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /insights/definitions:
+    get:
+      operationId: listLibraryInsightDefinitions
+      tags: [insights]
+      summary: List governed active Family Library metric definitions
+      description: >-
+        Returns the seven migration-managed Phase 4A definitions in stable
+        definition-key order. Definitions are deterministic, private to the
+        requesting-user scope, and expose no mutation mechanism.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Active governed Library insight definitions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalDefinitionListResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: A required definition is missing or malformed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /insights/library:
+    get:
+      operationId: getLibraryInsights
+      tags: [insights]
+      summary: Calculate exact actor-scoped Family Library insights
+      description: >-
+        Calculates current-state counts in one PostgreSQL statement over all
+        non-deleted Family Library rows visible through the authenticated
+        actor's RLS context. No row limit, AI, cache, observation persistence,
+        or cross-adult comparison is used. Counts are exact for the database
+        snapshot; real-world source completeness remains unknown because the
+        Library is user-controlled.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Private deterministic Library insight result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryInsightsResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Adult account required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Actor context or governed definition validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /library/stats:
+    get:
+      operationId: getLibraryStats
+      tags: [library]
+      summary: Get backward-compatible Family Library statistics
+      deprecated: true
+      description: >-
+        Deprecated compatibility view over the same exact actor-scoped SQL
+        aggregation used by /insights/library. No row limit is applied.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Existing Family Library statistics response shape
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryStatsResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Adult account required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Actor context or governed definition validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /library/import/preview:
     post:
       operationId: previewLibraryImport
@@ -806,6 +916,438 @@ components:
           type: array
           items:
             type: string
+
+    SignalDefinitionKey:
+      type: string
+      enum:
+        - library.archived_items.count
+        - library.household_items.count
+        - library.items_by_category.count
+        - library.items_by_sensitivity.count
+        - library.owned_items.count
+        - library.shared_with_me.count
+        - library.visible_items.count
+
+    SignalInputRequirements:
+      type: object
+      additionalProperties: false
+      required: [source, authorization, includedStatuses, excludedStatuses]
+      properties:
+        source:
+          type: string
+          const: family_library
+        authorization:
+          type: string
+          const: currently_visible_rows
+        includedStatuses:
+          type: array
+          prefixItems:
+            - type: string
+              const: active
+            - type: string
+              const: archived
+          minItems: 2
+          maxItems: 2
+        excludedStatuses:
+          type: array
+          prefixItems:
+            - type: string
+              const: deleted
+          minItems: 1
+          maxItems: 1
+
+    SignalOutputShape:
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [kind]
+          properties:
+            kind:
+              type: string
+              const: scalar_count
+        - type: object
+          additionalProperties: false
+          required: [kind, dimension, allowedValues]
+          properties:
+            kind:
+              type: string
+              const: dimensioned_count
+            dimension:
+              type: string
+              const: category
+            allowedValues:
+              type: array
+              items:
+                $ref: "#/components/schemas/LibraryItemCategory"
+        - type: object
+          additionalProperties: false
+          required: [kind, dimension, allowedValues]
+          properties:
+            kind:
+              type: string
+              const: dimensioned_count
+            dimension:
+              type: string
+              const: sensitivity
+            allowedValues:
+              type: array
+              items:
+                $ref: "#/components/schemas/LibraryItemSensitivity"
+
+    SignalMissingDataSemantics:
+      type: object
+      additionalProperties: false
+      required: [calculation, sourceCompleteness, interpretationWarning]
+      properties:
+        calculation:
+          type: string
+          const: zero_when_no_visible_rows
+        sourceCompleteness:
+          type: string
+          const: unknown_user_controlled
+        interpretationWarning:
+          type: string
+
+    SignalBaselineSemantics:
+      type: object
+      additionalProperties: false
+      required: [kind, explanation]
+      properties:
+        kind:
+          type: string
+          const: none
+        explanation:
+          type: string
+
+    SignalEvidenceThreshold:
+      type: object
+      additionalProperties: false
+      required: [minimumVisibleRows, semantics]
+      properties:
+        minimumVisibleRows:
+          type: integer
+          const: 0
+        semantics:
+          type: string
+
+    MetricUncertainty:
+      type: object
+      additionalProperties: false
+      required: [calculation, sourceCompleteness, interpretationWarning]
+      properties:
+        calculation:
+          type: string
+          const: none
+        sourceCompleteness:
+          type: string
+          const: unknown_user_controlled
+        interpretationWarning:
+          type: string
+
+    SignalDefinition:
+      type: object
+      additionalProperties: false
+      required:
+        - definitionKey
+        - name
+        - domain
+        - unit
+        - timeWindow
+        - formulaVersion
+        - definition
+        - inputRequirements
+        - evidenceKind
+        - outputShape
+        - missingDataSemantics
+        - baselineSemantics
+        - evidenceThreshold
+        - uncertaintySemantics
+        - allowedUses
+        - prohibitedUses
+        - sensitivity
+        - ownerScope
+        - defaultVisibility
+        - explanation
+        - status
+      properties:
+        definitionKey:
+          $ref: "#/components/schemas/SignalDefinitionKey"
+        name:
+          type: string
+        domain:
+          type: string
+          const: family_library
+        unit:
+          type: string
+          const: items
+        timeWindow:
+          type: string
+          const: current_state
+        formulaVersion:
+          type: string
+          const: v1
+        definition:
+          type: string
+        inputRequirements:
+          $ref: "#/components/schemas/SignalInputRequirements"
+        evidenceKind:
+          type: string
+          const: deterministic_derived_metric
+        outputShape:
+          $ref: "#/components/schemas/SignalOutputShape"
+        missingDataSemantics:
+          $ref: "#/components/schemas/SignalMissingDataSemantics"
+        baselineSemantics:
+          $ref: "#/components/schemas/SignalBaselineSemantics"
+        evidenceThreshold:
+          $ref: "#/components/schemas/SignalEvidenceThreshold"
+        uncertaintySemantics:
+          $ref: "#/components/schemas/MetricUncertainty"
+        allowedUses:
+          type: array
+          minItems: 1
+          items:
+            type: string
+        prohibitedUses:
+          type: array
+          minItems: 1
+          items:
+            type: string
+        sensitivity:
+          type: string
+          const: personal
+        ownerScope:
+          type: string
+          const: requesting_user
+        defaultVisibility:
+          type: string
+          const: private
+        explanation:
+          type: string
+        status:
+          type: string
+          const: active
+
+    SignalDefinitionListResponse:
+      type: object
+      additionalProperties: false
+      required: [catalogVersion, definitions]
+      properties:
+        catalogVersion:
+          type: string
+          const: library-insights.v1
+        definitions:
+          type: array
+          minItems: 7
+          maxItems: 7
+          items:
+            $ref: "#/components/schemas/SignalDefinition"
+
+    MetricCoverage:
+      type: object
+      additionalProperties: false
+      required:
+        - includedRows
+        - rowLimitApplied
+        - deletedRowsExcluded
+        - exactForDatabaseSnapshot
+        - sourceCompleteness
+        - explanation
+      properties:
+        includedRows:
+          type: string
+          const: all_non_deleted_visible_family_library_rows
+        rowLimitApplied:
+          type: boolean
+          const: false
+        deletedRowsExcluded:
+          type: boolean
+          const: true
+        exactForDatabaseSnapshot:
+          type: boolean
+          const: true
+        sourceCompleteness:
+          type: string
+          const: unknown_user_controlled
+        explanation:
+          type: string
+
+    ScalarInsightValue:
+      type: object
+      additionalProperties: false
+      required: [definitionKey, formulaVersion, value]
+      properties:
+        definitionKey:
+          $ref: "#/components/schemas/SignalDefinitionKey"
+        formulaVersion:
+          type: string
+          const: v1
+        value:
+          type: integer
+          minimum: 0
+
+    LibraryCategoryCountMap:
+      type: object
+      additionalProperties: false
+      required:
+        - note
+        - document-reference
+        - instruction
+        - decision
+        - memory
+        - medical-reference
+        - household-record
+        - vehicle-record
+        - career-record
+        - other
+      properties:
+        note: { type: integer, minimum: 0 }
+        document-reference: { type: integer, minimum: 0 }
+        instruction: { type: integer, minimum: 0 }
+        decision: { type: integer, minimum: 0 }
+        memory: { type: integer, minimum: 0 }
+        medical-reference: { type: integer, minimum: 0 }
+        household-record: { type: integer, minimum: 0 }
+        vehicle-record: { type: integer, minimum: 0 }
+        career-record: { type: integer, minimum: 0 }
+        other: { type: integer, minimum: 0 }
+
+    LibrarySensitivityCountMap:
+      type: object
+      additionalProperties: false
+      required: [standard, personal, sensitive, restricted]
+      properties:
+        standard: { type: integer, minimum: 0 }
+        personal: { type: integer, minimum: 0 }
+        sensitive: { type: integer, minimum: 0 }
+        restricted: { type: integer, minimum: 0 }
+
+    CategoryInsightValue:
+      type: object
+      additionalProperties: false
+      required: [definitionKey, formulaVersion, values]
+      properties:
+        definitionKey:
+          type: string
+          const: library.items_by_category.count
+        formulaVersion:
+          type: string
+          const: v1
+        values:
+          $ref: "#/components/schemas/LibraryCategoryCountMap"
+
+    SensitivityInsightValue:
+      type: object
+      additionalProperties: false
+      required: [definitionKey, formulaVersion, values]
+      properties:
+        definitionKey:
+          type: string
+          const: library.items_by_sensitivity.count
+        formulaVersion:
+          type: string
+          const: v1
+        values:
+          $ref: "#/components/schemas/LibrarySensitivityCountMap"
+
+    DimensionedInsightValue:
+      oneOf:
+        - $ref: "#/components/schemas/CategoryInsightValue"
+        - $ref: "#/components/schemas/SensitivityInsightValue"
+
+    LibraryInsightsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - catalogVersion
+        - calculatedAt
+        - ownerUserId
+        - visibility
+        - evidenceKind
+        - source
+        - authorizationBoundary
+        - coverage
+        - uncertainty
+        - metrics
+      properties:
+        catalogVersion:
+          type: string
+          const: library-insights.v1
+        calculatedAt:
+          type: string
+          format: date-time
+        ownerUserId:
+          type: integer
+          minimum: 1
+        visibility:
+          type: string
+          const: private
+        evidenceKind:
+          type: string
+          const: deterministic_derived_metric
+        source:
+          type: string
+          const: family_library
+        authorizationBoundary:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items:
+            type: string
+            enum:
+              - authenticated_session
+              - transaction_scoped_actor
+              - postgres_rls
+        coverage:
+          $ref: "#/components/schemas/MetricCoverage"
+        uncertainty:
+          $ref: "#/components/schemas/MetricUncertainty"
+        metrics:
+          type: object
+          additionalProperties: false
+          required:
+            - visibleItems
+            - ownedItems
+            - sharedWithMe
+            - householdItems
+            - archivedItems
+            - byCategory
+            - bySensitivity
+          properties:
+            visibleItems:
+              $ref: "#/components/schemas/ScalarInsightValue"
+            ownedItems:
+              $ref: "#/components/schemas/ScalarInsightValue"
+            sharedWithMe:
+              $ref: "#/components/schemas/ScalarInsightValue"
+            householdItems:
+              $ref: "#/components/schemas/ScalarInsightValue"
+            archivedItems:
+              $ref: "#/components/schemas/ScalarInsightValue"
+            byCategory:
+              $ref: "#/components/schemas/CategoryInsightValue"
+            bySensitivity:
+              $ref: "#/components/schemas/SensitivityInsightValue"
+
+    LibraryStatsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - visibleItems
+        - ownedItems
+        - sharedWithMe
+        - householdItems
+        - byCategory
+        - bySensitivity
+      properties:
+        visibleItems: { type: integer, minimum: 0 }
+        ownedItems: { type: integer, minimum: 0 }
+        sharedWithMe: { type: integer, minimum: 0 }
+        householdItems: { type: integer, minimum: 0 }
+        byCategory:
+          $ref: "#/components/schemas/LibraryCategoryCountMap"
+        bySensitivity:
+          $ref: "#/components/schemas/LibrarySensitivityCountMap"
 
     ConnectorStatus:
       type: string

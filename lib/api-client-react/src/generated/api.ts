@@ -38,8 +38,10 @@ import type {
   InvitationUpdate,
   LibraryImportCommitRequest,
   LibraryImportPreview,
+  LibraryInsightsResponse,
   LibraryItem,
   LibraryItemImportDocument,
+  LibraryStatsResponse,
   ListCalendarEventsParams,
   ListExperiencesParams,
   ListInvitationsParams,
@@ -54,6 +56,7 @@ import type {
   Reflection,
   ReflectionInput,
   SearchExperiencesParams,
+  SignalDefinitionListResponse,
   TodaySummary
 } from './api.schemas';
 
@@ -2218,6 +2221,242 @@ export function useGetConnectorCatalog<TData = Awaited<ReturnType<typeof getConn
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetConnectorCatalogQueryOptions(connectorId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListLibraryInsightDefinitionsUrl = () => {
+
+
+
+
+  return `/api/insights/definitions`
+}
+
+/**
+ * Returns the seven migration-managed Phase 4A definitions in stable definition-key order. Definitions are deterministic, private to the requesting-user scope, and expose no mutation mechanism.
+ * @summary List governed active Family Library metric definitions
+ */
+export const listLibraryInsightDefinitions = async ( options?: RequestInit): Promise<SignalDefinitionListResponse> => {
+
+  return customFetch<SignalDefinitionListResponse>(getListLibraryInsightDefinitionsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListLibraryInsightDefinitionsQueryKey = () => {
+    return [
+    `/api/insights/definitions`
+    ] as const;
+    }
+
+
+export const getListLibraryInsightDefinitionsQueryOptions = <TData = Awaited<ReturnType<typeof listLibraryInsightDefinitions>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listLibraryInsightDefinitions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListLibraryInsightDefinitionsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listLibraryInsightDefinitions>>> = ({ signal }) => listLibraryInsightDefinitions({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listLibraryInsightDefinitions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListLibraryInsightDefinitionsQueryResult = NonNullable<Awaited<ReturnType<typeof listLibraryInsightDefinitions>>>
+export type ListLibraryInsightDefinitionsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List governed active Family Library metric definitions
+ */
+
+export function useListLibraryInsightDefinitions<TData = Awaited<ReturnType<typeof listLibraryInsightDefinitions>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listLibraryInsightDefinitions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListLibraryInsightDefinitionsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetLibraryInsightsUrl = () => {
+
+
+
+
+  return `/api/insights/library`
+}
+
+/**
+ * Calculates current-state counts in one PostgreSQL statement over all non-deleted Family Library rows visible through the authenticated actor's RLS context. No row limit, AI, cache, observation persistence, or cross-adult comparison is used. Counts are exact for the database snapshot; real-world source completeness remains unknown because the Library is user-controlled.
+ * @summary Calculate exact actor-scoped Family Library insights
+ */
+export const getLibraryInsights = async ( options?: RequestInit): Promise<LibraryInsightsResponse> => {
+
+  return customFetch<LibraryInsightsResponse>(getGetLibraryInsightsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLibraryInsightsQueryKey = () => {
+    return [
+    `/api/insights/library`
+    ] as const;
+    }
+
+
+export const getGetLibraryInsightsQueryOptions = <TData = Awaited<ReturnType<typeof getLibraryInsights>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLibraryInsights>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLibraryInsightsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLibraryInsights>>> = ({ signal }) => getLibraryInsights({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLibraryInsights>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLibraryInsightsQueryResult = NonNullable<Awaited<ReturnType<typeof getLibraryInsights>>>
+export type GetLibraryInsightsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Calculate exact actor-scoped Family Library insights
+ */
+
+export function useGetLibraryInsights<TData = Awaited<ReturnType<typeof getLibraryInsights>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLibraryInsights>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLibraryInsightsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetLibraryStatsUrl = () => {
+
+
+
+
+  return `/api/library/stats`
+}
+
+/**
+ * Deprecated compatibility view over the same exact actor-scoped SQL aggregation used by /insights/library. No row limit is applied.
+ * @deprecated
+ * @summary Get backward-compatible Family Library statistics
+ */
+export const getLibraryStats = async ( options?: RequestInit): Promise<LibraryStatsResponse> => {
+
+  return customFetch<LibraryStatsResponse>(getGetLibraryStatsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLibraryStatsQueryKey = () => {
+    return [
+    `/api/library/stats`
+    ] as const;
+    }
+
+
+export const getGetLibraryStatsQueryOptions = <TData = Awaited<ReturnType<typeof getLibraryStats>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLibraryStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLibraryStatsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLibraryStats>>> = ({ signal }) => getLibraryStats({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLibraryStats>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLibraryStatsQueryResult = NonNullable<Awaited<ReturnType<typeof getLibraryStats>>>
+export type GetLibraryStatsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @deprecated
+ * @summary Get backward-compatible Family Library statistics
+ */
+
+export function useGetLibraryStats<TData = Awaited<ReturnType<typeof getLibraryStats>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLibraryStats>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLibraryStatsQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

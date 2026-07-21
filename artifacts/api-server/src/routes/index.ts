@@ -15,6 +15,7 @@ import userExperiencesRouter from "./user-experiences";
 import todayRouter from "./today";
 import libraryRouter from "./library";
 import connectorsRouter from "./connectors";
+import insightsRouter from "./insights";
 
 const router: IRouter = Router();
 
@@ -37,5 +38,6 @@ router.use(userExperiencesRouter);
 router.use(todayRouter);
 router.use(libraryRouter);
 router.use(connectorsRouter);
+router.use(insightsRouter);
 
 export default router;

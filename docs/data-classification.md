@@ -21,3 +21,9 @@
 ## Current App Constraints
 
 The current prototype does not provide end-to-end encryption, production identity assurance, or real external data connectors. It must not store banking credentials, identity documents, medical records, or production secrets until those controls are implemented and reviewed.
+
+## Deterministic Library Insights
+
+Phase 4A Library insight responses are personal private derived data owned by the requesting user. They contain aggregate counts only, never raw Library content, row identifiers, grant identifiers, or per-person breakdowns. Counts may reflect explicitly shared or household-visible rows because those rows are already readable by the actor, but the result remains private and cannot be shared automatically.
+
+The arithmetic has no calculation uncertainty for its database snapshot. The source is nevertheless incomplete by design: a user-controlled Library is not evidence that all relevant real-world records exist in Lighthouse. These metrics must not be used for diagnosis, eligibility, rankings, cross-adult comparison, or safety-critical decisions.

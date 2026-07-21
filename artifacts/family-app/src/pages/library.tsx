@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "wouter";
 import {
   Archive,
+  BarChart3,
   Download,
   EyeOff,
   FileClock,
@@ -466,6 +468,13 @@ export default function LibraryPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Link
+            href="/insights"
+            data-testid="library-mobile-insights-link"
+            className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-secondary md:hidden"
+          >
+            <BarChart3 className="h-4 w-4" /> Insights
+          </Link>
           <button
             onClick={() => {
               resetImport();

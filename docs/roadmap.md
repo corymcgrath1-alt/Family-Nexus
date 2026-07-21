@@ -26,9 +26,11 @@
 
 ## Phase 4: Insights and Signals
 
-- Add deterministic Library statistics only.
-- Add metric definitions with provenance, missing-data coverage, uncertainty, and allowed-use metadata.
-- Defer AI summaries until provider/data-flow decisions and user-authorized purposes exist.
+- Phase 4A complete: govern seven versioned, deterministic Family Library metric definitions in PostgreSQL.
+- Phase 4A complete: calculate exact, current-state, requesting-user-owned counts from RLS-visible Library rows without persisting observations.
+- Phase 4A complete: expose the governed definitions and private counts through authenticated APIs and the Insights page.
+- Deferred: persisted signal history, trends, recommendations, AI summaries, external-connector insights, health or financial insights, and household-member comparisons.
+- Deferred: production identity, application-wide legacy-table RLS, and full consent lifecycle automation.
 
 ## Deferred Regulatory Gates
 

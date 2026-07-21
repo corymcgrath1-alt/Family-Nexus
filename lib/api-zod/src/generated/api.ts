@@ -1107,6 +1107,269 @@ export const GetConnectorCatalogResponse = zod.object({
 
 
 /**
+ * Returns the seven migration-managed Phase 4A definitions in stable definition-key order. Definitions are deterministic, private to the requesting-user scope, and expose no mutation mechanism.
+ * @summary List governed active Family Library metric definitions
+ */
+
+
+export const listLibraryInsightDefinitionsResponseDefinitionsMin = 7;
+export const listLibraryInsightDefinitionsResponseDefinitionsMax = 7;
+
+
+
+export const ListLibraryInsightDefinitionsResponse = zod.object({
+  "catalogVersion": zod.literal("library-insights.v1"),
+  "definitions": zod.array(zod.object({
+  "definitionKey": zod.enum(['library.archived_items.count', 'library.household_items.count', 'library.items_by_category.count', 'library.items_by_sensitivity.count', 'library.owned_items.count', 'library.shared_with_me.count', 'library.visible_items.count']),
+  "name": zod.string(),
+  "domain": zod.literal("family_library"),
+  "unit": zod.literal("items"),
+  "timeWindow": zod.literal("current_state"),
+  "formulaVersion": zod.literal("v1"),
+  "definition": zod.string(),
+  "inputRequirements": zod.object({
+  "source": zod.literal("family_library"),
+  "authorization": zod.literal("currently_visible_rows"),
+  "includedStatuses": zod.tuple([zod.literal("active"),
+zod.literal("archived")]),
+  "excludedStatuses": zod.tuple([zod.literal("deleted")])
+}),
+  "evidenceKind": zod.literal("deterministic_derived_metric"),
+  "outputShape": zod.union([zod.object({
+  "kind": zod.literal("scalar_count")
+}),zod.object({
+  "kind": zod.literal("dimensioned_count"),
+  "dimension": zod.literal("category"),
+  "allowedValues": zod.array(zod.enum(['note', 'document-reference', 'instruction', 'decision', 'memory', 'medical-reference', 'household-record', 'vehicle-record', 'career-record', 'other']))
+}),zod.object({
+  "kind": zod.literal("dimensioned_count"),
+  "dimension": zod.literal("sensitivity"),
+  "allowedValues": zod.array(zod.enum(['standard', 'personal', 'sensitive', 'restricted']))
+})]),
+  "missingDataSemantics": zod.object({
+  "calculation": zod.literal("zero_when_no_visible_rows"),
+  "sourceCompleteness": zod.literal("unknown_user_controlled"),
+  "interpretationWarning": zod.string()
+}),
+  "baselineSemantics": zod.object({
+  "kind": zod.literal("none"),
+  "explanation": zod.string()
+}),
+  "evidenceThreshold": zod.object({
+  "minimumVisibleRows": zod.number(),
+  "semantics": zod.string()
+}),
+  "uncertaintySemantics": zod.object({
+  "calculation": zod.literal("none"),
+  "sourceCompleteness": zod.literal("unknown_user_controlled"),
+  "interpretationWarning": zod.string()
+}),
+  "allowedUses": zod.array(zod.string()).min(1),
+  "prohibitedUses": zod.array(zod.string()).min(1),
+  "sensitivity": zod.literal("personal"),
+  "ownerScope": zod.literal("requesting_user"),
+  "defaultVisibility": zod.literal("private"),
+  "explanation": zod.string(),
+  "status": zod.literal("active")
+})).min(listLibraryInsightDefinitionsResponseDefinitionsMin).max(listLibraryInsightDefinitionsResponseDefinitionsMax)
+})
+
+
+/**
+ * Calculates current-state counts in one PostgreSQL statement over all non-deleted Family Library rows visible through the authenticated actor's RLS context. No row limit, AI, cache, observation persistence, or cross-adult comparison is used. Counts are exact for the database snapshot; real-world source completeness remains unknown because the Library is user-controlled.
+ * @summary Calculate exact actor-scoped Family Library insights
+ */
+
+export const getLibraryInsightsResponseAuthorizationBoundaryMin = 3;
+export const getLibraryInsightsResponseAuthorizationBoundaryMax = 3;
+
+export const getLibraryInsightsResponseMetricsVisibleItemsValueMin = 0;
+
+export const getLibraryInsightsResponseMetricsOwnedItemsValueMin = 0;
+
+export const getLibraryInsightsResponseMetricsSharedWithMeValueMin = 0;
+
+export const getLibraryInsightsResponseMetricsHouseholdItemsValueMin = 0;
+
+export const getLibraryInsightsResponseMetricsArchivedItemsValueMin = 0;
+
+export const getLibraryInsightsResponseMetricsByCategoryValuesNoteMin = 0;
+
+export const getLibraryInsightsResponseMetricsByCategoryValuesDocumentReferenceMin = 0;
+
+export const getLibraryInsightsResponseMetricsByCategoryValuesInstructionMin = 0;
+
+export const getLibraryInsightsResponseMetricsByCategoryValuesDecisionMin = 0;
+
+export const getLibraryInsightsResponseMetricsByCategoryValuesMemoryMin = 0;
+
+export const getLibraryInsightsResponseMetricsByCategoryValuesMedicalReferenceMin = 0;
+
+export const getLibraryInsightsResponseMetricsByCategoryValuesHouseholdRecordMin = 0;
+
+export const getLibraryInsightsResponseMetricsByCategoryValuesVehicleRecordMin = 0;
+
+export const getLibraryInsightsResponseMetricsByCategoryValuesCareerRecordMin = 0;
+
+export const getLibraryInsightsResponseMetricsByCategoryValuesOtherMin = 0;
+
+export const getLibraryInsightsResponseMetricsBySensitivityValuesStandardMin = 0;
+
+export const getLibraryInsightsResponseMetricsBySensitivityValuesPersonalMin = 0;
+
+export const getLibraryInsightsResponseMetricsBySensitivityValuesSensitiveMin = 0;
+
+export const getLibraryInsightsResponseMetricsBySensitivityValuesRestrictedMin = 0;
+
+
+
+export const GetLibraryInsightsResponse = zod.object({
+  "catalogVersion": zod.literal("library-insights.v1"),
+  "calculatedAt": zod.coerce.date(),
+  "ownerUserId": zod.number().min(1),
+  "visibility": zod.literal("private"),
+  "evidenceKind": zod.literal("deterministic_derived_metric"),
+  "source": zod.literal("family_library"),
+  "authorizationBoundary": zod.array(zod.enum(['authenticated_session', 'transaction_scoped_actor', 'postgres_rls'])).min(getLibraryInsightsResponseAuthorizationBoundaryMin).max(getLibraryInsightsResponseAuthorizationBoundaryMax),
+  "coverage": zod.object({
+  "includedRows": zod.literal("all_non_deleted_visible_family_library_rows"),
+  "rowLimitApplied": zod.boolean(),
+  "deletedRowsExcluded": zod.boolean(),
+  "exactForDatabaseSnapshot": zod.boolean(),
+  "sourceCompleteness": zod.literal("unknown_user_controlled"),
+  "explanation": zod.string()
+}),
+  "uncertainty": zod.object({
+  "calculation": zod.literal("none"),
+  "sourceCompleteness": zod.literal("unknown_user_controlled"),
+  "interpretationWarning": zod.string()
+}),
+  "metrics": zod.object({
+  "visibleItems": zod.object({
+  "definitionKey": zod.enum(['library.archived_items.count', 'library.household_items.count', 'library.items_by_category.count', 'library.items_by_sensitivity.count', 'library.owned_items.count', 'library.shared_with_me.count', 'library.visible_items.count']),
+  "formulaVersion": zod.literal("v1"),
+  "value": zod.number().min(getLibraryInsightsResponseMetricsVisibleItemsValueMin)
+}),
+  "ownedItems": zod.object({
+  "definitionKey": zod.enum(['library.archived_items.count', 'library.household_items.count', 'library.items_by_category.count', 'library.items_by_sensitivity.count', 'library.owned_items.count', 'library.shared_with_me.count', 'library.visible_items.count']),
+  "formulaVersion": zod.literal("v1"),
+  "value": zod.number().min(getLibraryInsightsResponseMetricsOwnedItemsValueMin)
+}),
+  "sharedWithMe": zod.object({
+  "definitionKey": zod.enum(['library.archived_items.count', 'library.household_items.count', 'library.items_by_category.count', 'library.items_by_sensitivity.count', 'library.owned_items.count', 'library.shared_with_me.count', 'library.visible_items.count']),
+  "formulaVersion": zod.literal("v1"),
+  "value": zod.number().min(getLibraryInsightsResponseMetricsSharedWithMeValueMin)
+}),
+  "householdItems": zod.object({
+  "definitionKey": zod.enum(['library.archived_items.count', 'library.household_items.count', 'library.items_by_category.count', 'library.items_by_sensitivity.count', 'library.owned_items.count', 'library.shared_with_me.count', 'library.visible_items.count']),
+  "formulaVersion": zod.literal("v1"),
+  "value": zod.number().min(getLibraryInsightsResponseMetricsHouseholdItemsValueMin)
+}),
+  "archivedItems": zod.object({
+  "definitionKey": zod.enum(['library.archived_items.count', 'library.household_items.count', 'library.items_by_category.count', 'library.items_by_sensitivity.count', 'library.owned_items.count', 'library.shared_with_me.count', 'library.visible_items.count']),
+  "formulaVersion": zod.literal("v1"),
+  "value": zod.number().min(getLibraryInsightsResponseMetricsArchivedItemsValueMin)
+}),
+  "byCategory": zod.object({
+  "definitionKey": zod.literal("library.items_by_category.count"),
+  "formulaVersion": zod.literal("v1"),
+  "values": zod.object({
+  "note": zod.number().min(getLibraryInsightsResponseMetricsByCategoryValuesNoteMin),
+  "document-reference": zod.number().min(getLibraryInsightsResponseMetricsByCategoryValuesDocumentReferenceMin),
+  "instruction": zod.number().min(getLibraryInsightsResponseMetricsByCategoryValuesInstructionMin),
+  "decision": zod.number().min(getLibraryInsightsResponseMetricsByCategoryValuesDecisionMin),
+  "memory": zod.number().min(getLibraryInsightsResponseMetricsByCategoryValuesMemoryMin),
+  "medical-reference": zod.number().min(getLibraryInsightsResponseMetricsByCategoryValuesMedicalReferenceMin),
+  "household-record": zod.number().min(getLibraryInsightsResponseMetricsByCategoryValuesHouseholdRecordMin),
+  "vehicle-record": zod.number().min(getLibraryInsightsResponseMetricsByCategoryValuesVehicleRecordMin),
+  "career-record": zod.number().min(getLibraryInsightsResponseMetricsByCategoryValuesCareerRecordMin),
+  "other": zod.number().min(getLibraryInsightsResponseMetricsByCategoryValuesOtherMin)
+})
+}),
+  "bySensitivity": zod.object({
+  "definitionKey": zod.literal("library.items_by_sensitivity.count"),
+  "formulaVersion": zod.literal("v1"),
+  "values": zod.object({
+  "standard": zod.number().min(getLibraryInsightsResponseMetricsBySensitivityValuesStandardMin),
+  "personal": zod.number().min(getLibraryInsightsResponseMetricsBySensitivityValuesPersonalMin),
+  "sensitive": zod.number().min(getLibraryInsightsResponseMetricsBySensitivityValuesSensitiveMin),
+  "restricted": zod.number().min(getLibraryInsightsResponseMetricsBySensitivityValuesRestrictedMin)
+})
+})
+})
+})
+
+
+/**
+ * Deprecated compatibility view over the same exact actor-scoped SQL aggregation used by /insights/library. No row limit is applied.
+ * @deprecated
+ * @summary Get backward-compatible Family Library statistics
+ */
+export const getLibraryStatsResponseVisibleItemsMin = 0;
+
+export const getLibraryStatsResponseOwnedItemsMin = 0;
+
+export const getLibraryStatsResponseSharedWithMeMin = 0;
+
+export const getLibraryStatsResponseHouseholdItemsMin = 0;
+
+export const getLibraryStatsResponseByCategoryNoteMin = 0;
+
+export const getLibraryStatsResponseByCategoryDocumentReferenceMin = 0;
+
+export const getLibraryStatsResponseByCategoryInstructionMin = 0;
+
+export const getLibraryStatsResponseByCategoryDecisionMin = 0;
+
+export const getLibraryStatsResponseByCategoryMemoryMin = 0;
+
+export const getLibraryStatsResponseByCategoryMedicalReferenceMin = 0;
+
+export const getLibraryStatsResponseByCategoryHouseholdRecordMin = 0;
+
+export const getLibraryStatsResponseByCategoryVehicleRecordMin = 0;
+
+export const getLibraryStatsResponseByCategoryCareerRecordMin = 0;
+
+export const getLibraryStatsResponseByCategoryOtherMin = 0;
+
+export const getLibraryStatsResponseBySensitivityStandardMin = 0;
+
+export const getLibraryStatsResponseBySensitivityPersonalMin = 0;
+
+export const getLibraryStatsResponseBySensitivitySensitiveMin = 0;
+
+export const getLibraryStatsResponseBySensitivityRestrictedMin = 0;
+
+
+
+export const GetLibraryStatsResponse = zod.object({
+  "visibleItems": zod.number().min(getLibraryStatsResponseVisibleItemsMin),
+  "ownedItems": zod.number().min(getLibraryStatsResponseOwnedItemsMin),
+  "sharedWithMe": zod.number().min(getLibraryStatsResponseSharedWithMeMin),
+  "householdItems": zod.number().min(getLibraryStatsResponseHouseholdItemsMin),
+  "byCategory": zod.object({
+  "note": zod.number().min(getLibraryStatsResponseByCategoryNoteMin),
+  "document-reference": zod.number().min(getLibraryStatsResponseByCategoryDocumentReferenceMin),
+  "instruction": zod.number().min(getLibraryStatsResponseByCategoryInstructionMin),
+  "decision": zod.number().min(getLibraryStatsResponseByCategoryDecisionMin),
+  "memory": zod.number().min(getLibraryStatsResponseByCategoryMemoryMin),
+  "medical-reference": zod.number().min(getLibraryStatsResponseByCategoryMedicalReferenceMin),
+  "household-record": zod.number().min(getLibraryStatsResponseByCategoryHouseholdRecordMin),
+  "vehicle-record": zod.number().min(getLibraryStatsResponseByCategoryVehicleRecordMin),
+  "career-record": zod.number().min(getLibraryStatsResponseByCategoryCareerRecordMin),
+  "other": zod.number().min(getLibraryStatsResponseByCategoryOtherMin)
+}),
+  "bySensitivity": zod.object({
+  "standard": zod.number().min(getLibraryStatsResponseBySensitivityStandardMin),
+  "personal": zod.number().min(getLibraryStatsResponseBySensitivityPersonalMin),
+  "sensitive": zod.number().min(getLibraryStatsResponseBySensitivitySensitiveMin),
+  "restricted": zod.number().min(getLibraryStatsResponseBySensitivityRestrictedMin)
+})
+})
+
+
+/**
  * @summary Preview a private Family Library JSON import
  */
 export const previewLibraryImportBodyConnectorIdDefault = `manual-family-library`;

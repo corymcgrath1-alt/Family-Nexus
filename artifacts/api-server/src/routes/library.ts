@@ -3,6 +3,7 @@ import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   CommitLibraryImportResponse,
+  GetLibraryStatsResponse,
   PreviewLibraryImportResponse,
 } from "@workspace/api-zod";
 import {
@@ -41,6 +42,10 @@ import {
   type LibraryItemRow,
   type SharingGrantRow,
 } from "../lib/library-service";
+import {
+  calculateLibraryInsights,
+  toLegacyLibraryStats,
+} from "../lib/library-insights-service";
 
 const router: IRouter = Router();
 router.use(requireAuth);
@@ -209,43 +214,14 @@ router.get(
 router.get(
   "/library/stats",
   withAuthenticatedDatabaseActor(async (req, res): Promise<void> => {
-    const actor = actorFromRequest(req);
-    const rows = await db
-      .select()
-      .from(libraryItemsTable)
-      .where(
-        and(
-          eq(libraryItemsTable.householdId, actor.householdId),
-          ne(libraryItemsTable.status, "deleted"),
-        ),
-      )
-      .limit(500);
-    const grants = await selectGrants(rows.map((row) => row.id));
-    const authorized = rows.filter((item) =>
-      canReadLibraryItem(actor, item, grantsForItem(grants, item.id)),
-    );
-
-    const byCategory: Record<string, number> = {};
-    const bySensitivity: Record<string, number> = {};
-    for (const item of authorized) {
-      byCategory[item.category] = (byCategory[item.category] ?? 0) + 1;
-      bySensitivity[item.sensitivity] =
-        (bySensitivity[item.sensitivity] ?? 0) + 1;
+    try {
+      const actor = actorFromRequest(req);
+      const insights = await calculateLibraryInsights(actor);
+      res.json(GetLibraryStatsResponse.parse(toLegacyLibraryStats(insights)));
+    } catch (error) {
+      req.log.error({ err: error }, "Library statistics are unavailable");
+      res.status(500).json({ error: "Insights are unavailable" });
     }
-
-    res.json({
-      visibleItems: authorized.length,
-      ownedItems: authorized.filter((item) => item.ownerUserId === actor.id)
-        .length,
-      sharedWithMe: authorized.filter(
-        (item) => item.ownerUserId !== actor.id && item.visibility === "shared",
-      ).length,
-      householdItems: authorized.filter(
-        (item) => item.visibility === "household",
-      ).length,
-      byCategory,
-      bySensitivity,
-    });
   }),
 );
 

@@ -28,17 +28,19 @@ type NavItem = {
   icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
 };
 
-const NAV_ITEMS: NavItem[] = [
+const DESKTOP_NAV_ITEMS: NavItem[] = [
   { path: "/", label: "Today", icon: Home },
   { path: "/family", label: "Family", icon: Users },
   { path: "/library", label: "Library", icon: Library },
+  { path: "/insights", label: "Insights", icon: BarChart3 },
   { path: "/together", label: "Connection", icon: Compass },
   { path: "/privacy", label: "Settings and Privacy", icon: Shield, mobileLabel: "Privacy" },
 ];
 
+const MOBILE_NAV_ITEMS = DESKTOP_NAV_ITEMS.filter((item) => item.path !== "/insights");
+
 const PREVIEW_ITEMS = [
   { label: "Plans", icon: ClipboardList },
-  { label: "Insights", icon: BarChart3 },
   { label: "Health", icon: HeartPulse },
   { label: "Home", icon: HomeIcon },
   { label: "Vehicles", icon: Car },
@@ -95,7 +97,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="flex-1 space-y-1">
-          {NAV_ITEMS.map((item) => {
+          {DESKTOP_NAV_ITEMS.map((item) => {
             const isActive = location === item.path || (item.path !== "/" && location.startsWith(item.path));
             return (
               <Link key={item.path} href={item.path} className={cn(
@@ -159,7 +161,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Mobile Bottom Nav */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-background border-t border-border flex items-center justify-around px-2 pb-safe pt-2 z-50">
-        {NAV_ITEMS.map((item) => {
+        {MOBILE_NAV_ITEMS.map((item) => {
           const isActive = location === item.path || (item.path !== "/" && location.startsWith(item.path));
           return (
             <Link key={item.path} href={item.path} className={cn(

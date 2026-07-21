@@ -241,6 +241,31 @@ export default function PrivacyPage() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Database className="w-4 h-4" /> Insight boundaries
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ul className="space-y-2 text-sm">
+            {[
+              "Insight results are private to the requesting user.",
+              "Only currently visible Family Library records are counted.",
+              "Counts are exact for the database snapshot, not a claim that the Library represents real-world completeness.",
+              "No AI or model is involved.",
+              "No cross-adult comparison is produced.",
+              "No signal observation or insight-view history is persisted in this release.",
+            ].map((boundary) => (
+              <li key={boundary} className="flex items-start gap-2">
+                <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                <span>{boundary}</span>
+              </li>
+            ))}
+          </ul>
+        </CardContent>
+      </Card>
+
       {summary?.principle && (
         <blockquote className="border-l-4 border-primary pl-5 py-2 italic text-foreground/80 text-base leading-relaxed bg-primary/5 rounded-r-xl">
           &quot;{summary.principle}&quot;
