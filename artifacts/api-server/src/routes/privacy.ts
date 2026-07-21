@@ -1,6 +1,12 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
-import { db, usersTable, experienceProfilesTable, householdInvitesTable, householdsTable } from "@workspace/db";
+import {
+  db,
+  usersTable,
+  experienceProfilesTable,
+  householdInvitesTable,
+  householdsTable,
+} from "@workspace/db";
 import { requireAuth } from "../middleware/auth";
 
 const router: IRouter = Router();
@@ -10,25 +16,52 @@ router.get("/privacy/summary", async (req, res): Promise<void> => {
   const hhId = req.session.householdId!;
   const uid = req.session.userId!;
 
-  const members = await db.select().from(usersTable).where(eq(usersTable.householdId, hhId));
-  const [household] = await db.select().from(householdsTable).where(eq(householdsTable.id, hhId));
+  const members = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.householdId, hhId));
+  const [household] = await db
+    .select()
+    .from(householdsTable)
+    .where(eq(householdsTable.id, hhId));
 
   // Get profile visibility summary for the current user (no private data cross-user)
-  const [myProfile] = await db.select().from(experienceProfilesTable).where(eq(experienceProfilesTable.userId, uid));
+  const [myProfile] = await db
+    .select()
+    .from(experienceProfilesTable)
+    .where(eq(experienceProfilesTable.userId, uid));
 
   const visibilitySummary = myProfile
     ? {
-        privateCount: ([...(myProfile.interests as object[]), ...(myProfile.dislikes as object[])] as Array<{ visibility?: string }>)
-          .filter((t) => t.visibility === "private").length,
-        aiOnlyCount: ([...(myProfile.interests as object[]), ...(myProfile.dislikes as object[])] as Array<{ visibility?: string }>)
-          .filter((t) => t.visibility === "ai-only").length,
-        sharedCount: ([...(myProfile.interests as object[]), ...(myProfile.dislikes as object[])] as Array<{ visibility?: string }>)
-          .filter((t) => ["share-exact", "share-summary", "surprise-ok"].includes(t.visibility ?? "")).length,
+        privateCount: (
+          [
+            ...(myProfile.interests as object[]),
+            ...(myProfile.dislikes as object[]),
+          ] as Array<{ visibility?: string }>
+        ).filter((t) => t.visibility === "private").length,
+        aiOnlyCount: (
+          [
+            ...(myProfile.interests as object[]),
+            ...(myProfile.dislikes as object[]),
+          ] as Array<{ visibility?: string }>
+        ).filter((t) => t.visibility === "ai-only").length,
+        sharedCount: (
+          [
+            ...(myProfile.interests as object[]),
+            ...(myProfile.dislikes as object[]),
+          ] as Array<{ visibility?: string }>
+        ).filter((t) =>
+          ["share-exact", "share-summary", "surprise-ok"].includes(
+            t.visibility ?? "",
+          ),
+        ).length,
       }
     : null;
 
   // Active invites (pending joins)
-  const activeInvites = await db.select().from(householdInvitesTable)
+  const activeInvites = await db
+    .select()
+    .from(householdInvitesTable)
     .where(eq(householdInvitesTable.householdId, hhId));
 
   res.json({
@@ -58,11 +91,12 @@ router.get("/privacy/summary", async (req, res): Promise<void> => {
     ],
     limitations: [
       "Data is stored on shared servers and is not end-to-end encrypted",
-      "This version is not suitable for medical records, banking credentials, or identity documents",
+      "This version is not suitable for banking credentials, identity documents, or unreviewed medical data",
       "Audit logging is not yet implemented across every existing domain",
-      "Replit's infrastructure has access to stored data as with any hosted web application",
+      "The hosting infrastructure can access stored data as with any hosted web application",
     ],
-    principle: "This app helps us remember what we chose to share. It does not investigate what either of us chose to keep private.",
+    principle:
+      "This app helps us remember what we chose to share. It does not investigate what either of us chose to keep private.",
   });
 });
 

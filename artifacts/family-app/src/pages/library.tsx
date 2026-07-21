@@ -4,6 +4,7 @@ import {
   Download,
   EyeOff,
   FileClock,
+  FileJson,
   History,
   Library,
   Lock,
@@ -13,8 +14,22 @@ import {
   Share2,
   Trash2,
   Undo2,
+  Upload,
   Users,
 } from "lucide-react";
+import type {
+  LibraryImportPreview,
+  LibraryItemImportDocument,
+} from "@workspace/api-client-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
@@ -101,7 +116,12 @@ const initialForm = {
   retentionPolicy: "keep-until-archived",
 };
 
-function labelFor(value: string, options: readonly (readonly [string, string])[]) {
+const maxImportBytes = 32 * 1024;
+
+function labelFor(
+  value: string,
+  options: readonly (readonly [string, string])[],
+) {
   return options.find(([key]) => key === value)?.[1] ?? value;
 }
 
@@ -119,9 +139,22 @@ export default function LibraryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importDocument, setImportDocument] =
+    useState<LibraryItemImportDocument | null>(null);
+  const [importPreview, setImportPreview] =
+    useState<LibraryImportPreview | null>(null);
+  const [importConfirmed, setImportConfirmed] = useState(false);
+  const [importError, setImportError] = useState("");
+  const [isImporting, setIsImporting] = useState(false);
+  const [importSuccess, setImportSuccess] = useState("");
 
   const adults = useMemo(
-    () => members.filter((member) => member.role === "adult" && member.id !== user?.id),
+    () =>
+      members.filter(
+        (member) => member.role === "adult" && member.id !== user?.id,
+      ),
     [members, user?.id],
   );
 
@@ -130,16 +163,19 @@ export default function LibraryPage() {
     [items, selectedId],
   );
 
-  const selectedActiveGrants = selected?.grants.filter((grant) => {
-    if (grant.revokedAt) return false;
-    return !grant.expiresAt || new Date(grant.expiresAt) > new Date();
-  }) ?? [];
+  const selectedActiveGrants =
+    selected?.grants.filter((grant) => {
+      if (grant.revokedAt) return false;
+      return !grant.expiresAt || new Date(grant.expiresAt) > new Date();
+    }) ?? [];
   const selectedOwnerUserId = selected?.ownerUserId;
   const isOwner = !!selected && selected.ownerUserId === user?.id;
 
   const accessExplanation = useMemo(() => {
-    if (form.visibility === "private") return "Only you can access this item. It will not appear in household search for other adults.";
-    if (form.visibility === "household") return "Adult members of this household can access this household item. It is not a private vault record.";
+    if (form.visibility === "private")
+      return "Only you can access this item. It will not appear in household search for other adults.";
+    if (form.visibility === "household")
+      return "Adult members of this household can access this household item. It is not a private vault record.";
     const names = adults
       .filter((adult) => form.shareWithUserIds.includes(adult.id))
       .map((adult) => adult.displayName);
@@ -161,7 +197,11 @@ export default function LibraryPage() {
       setItems(nextItems);
       setMembers(nextMembers);
       setStats(nextStats);
-      setSelectedId((current) => current && nextItems.some((item) => item.id === current) ? current : nextItems[0]?.id ?? null);
+      setSelectedId((current) =>
+        current && nextItems.some((item) => item.id === current)
+          ? current
+          : (nextItems[0]?.id ?? null),
+      );
     } catch (err: any) {
       setError(err.message ?? "Could not load Library");
     } finally {
@@ -196,9 +236,13 @@ export default function LibraryPage() {
     let cancelled = false;
     const verifySelectedAccess = async () => {
       try {
-        const verified = await apiFetch(`/library/items/${selectedId}`) as LibraryItem;
+        const verified = (await apiFetch(
+          `/library/items/${selectedId}`,
+        )) as LibraryItem;
         if (cancelled) return;
-        setItems((current) => current.map((item) => (item.id === verified.id ? verified : item)));
+        setItems((current) =>
+          current.map((item) => (item.id === verified.id ? verified : item)),
+        );
       } catch (err: any) {
         if (cancelled || err.status !== 404) return;
         setAuditEvents([]);
@@ -214,11 +258,12 @@ export default function LibraryPage() {
     const handleVisibilityChange = () => {
       if (!document.hidden) void verifySelectedAccess();
     };
-    const intervalId = selectedOwnerUserId && selectedOwnerUserId !== user?.id
-      ? window.setInterval(() => {
-          void verifySelectedAccess();
-        }, 2_000)
-      : null;
+    const intervalId =
+      selectedOwnerUserId && selectedOwnerUserId !== user?.id
+        ? window.setInterval(() => {
+            void verifySelectedAccess();
+          }, 2_000)
+        : null;
 
     window.addEventListener("focus", handleFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -235,7 +280,7 @@ export default function LibraryPage() {
     setIsSaving(true);
     setError("");
     try {
-      const created = await apiFetch("/library/items", {
+      const created = (await apiFetch("/library/items", {
         method: "POST",
         body: JSON.stringify({
           ...form,
@@ -244,7 +289,7 @@ export default function LibraryPage() {
           provenanceNote: form.provenanceNote || null,
           effectiveDate: form.effectiveDate || null,
         }),
-      }) as LibraryItem;
+      })) as LibraryItem;
       setForm(initialForm);
       setSelectedId(created.id);
       await load(query);
@@ -259,7 +304,10 @@ export default function LibraryPage() {
     if (!selected || !shareTarget) return;
     await apiFetch(`/library/items/${selected.id}/share`, {
       method: "POST",
-      body: JSON.stringify({ granteeUserId: Number(shareTarget), purpose: "library_share" }),
+      body: JSON.stringify({
+        granteeUserId: Number(shareTarget),
+        purpose: "library_share",
+      }),
     });
     setShareTarget("");
     await load(query);
@@ -276,17 +324,19 @@ export default function LibraryPage() {
 
   async function patchSelected(patch: Record<string, unknown>) {
     if (!selected) return;
-    const updated = await apiFetch(`/library/items/${selected.id}`, {
+    const updated = (await apiFetch(`/library/items/${selected.id}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
-    }) as LibraryItem;
+    })) as LibraryItem;
     setSelectedId(updated.id);
     await load(query);
   }
 
   async function deleteSelected() {
     if (!selected) return;
-    const ok = window.confirm("Delete this Library item? Future access will be revoked and the audit trail will remain.");
+    const ok = window.confirm(
+      "Delete this Library item? Future access will be revoked and the audit trail will remain.",
+    );
     if (!ok) return;
     await apiFetch(`/library/items/${selected.id}`, { method: "DELETE" });
     setSelectedId(null);
@@ -296,7 +346,9 @@ export default function LibraryPage() {
   async function exportSelected() {
     if (!selected) return;
     const data = await apiFetch(`/library/items/${selected.id}/export`);
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -305,12 +357,95 @@ export default function LibraryPage() {
     URL.revokeObjectURL(url);
   }
 
+  function resetImport() {
+    setImportFile(null);
+    setImportDocument(null);
+    setImportPreview(null);
+    setImportConfirmed(false);
+    setImportError("");
+    setIsImporting(false);
+  }
+
+  async function selectImportFile(file: File | null) {
+    resetImport();
+    setImportFile(file);
+    if (!file) return;
+    if (file.size > maxImportBytes) {
+      setImportError("The selected JSON file exceeds the 32 KiB import limit.");
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      if (new Blob([text]).size > maxImportBytes) {
+        setImportError(
+          "The selected JSON file exceeds the 32 KiB import limit.",
+        );
+        return;
+      }
+      setImportDocument(JSON.parse(text) as LibraryItemImportDocument);
+    } catch {
+      setImportError("The selected file does not contain valid JSON.");
+    }
+  }
+
+  async function previewSelectedImport() {
+    if (!importDocument) return;
+    setIsImporting(true);
+    setImportError("");
+    setImportConfirmed(false);
+    try {
+      const preview = (await apiFetch("/library/import/preview", {
+        method: "POST",
+        body: JSON.stringify(importDocument),
+      })) as LibraryImportPreview;
+      setImportPreview(preview);
+    } catch (err: any) {
+      setImportPreview(null);
+      setImportError(err.message ?? "Could not preview this JSON import.");
+    } finally {
+      setIsImporting(false);
+    }
+  }
+
+  async function commitSelectedImport() {
+    if (!importDocument || !importConfirmed) return;
+    setIsImporting(true);
+    setImportError("");
+    try {
+      const created = (await apiFetch("/library/import", {
+        method: "POST",
+        body: JSON.stringify({
+          confirmPrivateCopy: true,
+          document: importDocument,
+        }),
+      })) as LibraryItem;
+      setQuery("");
+      await load("");
+      setSelectedId(created.id);
+      setImportSuccess(
+        `Imported ${created.title} as a new private Library item.`,
+      );
+      setImportOpen(false);
+      resetImport();
+    } catch (err: any) {
+      setImportError(err.message ?? "Could not import this Library item.");
+    } finally {
+      setIsImporting(false);
+    }
+  }
+
   if (user?.role === "child") {
     return (
       <div className="flex-1 p-6 md:p-10 flex flex-col items-center justify-center text-center max-w-md mx-auto">
         <Lock className="w-10 h-10 text-muted-foreground mb-4" />
-        <h1 className="text-2xl font-serif mb-2">Library is adult-only for now</h1>
-        <p className="text-sm text-muted-foreground">Dependent access needs guardian, age, safety, and privacy rules before it is enabled.</p>
+        <h1 className="text-2xl font-serif mb-2">
+          Library is adult-only for now
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Dependent access needs guardian, age, safety, and privacy rules before
+          it is enabled.
+        </p>
       </div>
     );
   }
@@ -321,18 +456,32 @@ export default function LibraryPage() {
         <div>
           <div className="flex items-center gap-3 mb-2">
             <Library className="w-8 h-8 text-primary" />
-            <h1 className="text-3xl md:text-4xl font-serif text-foreground">Family Library</h1>
+            <h1 className="text-3xl md:text-4xl font-serif text-foreground">
+              Family Library
+            </h1>
           </div>
           <p className="text-sm text-muted-foreground max-w-2xl">
-            Save knowledge, decisions, instructions, references, and memories with explicit ownership and sharing.
+            Save knowledge, decisions, instructions, references, and memories
+            with explicit ownership and sharing.
           </p>
         </div>
-        <button
-          onClick={() => load(query)}
-          className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm hover:bg-secondary"
-        >
-          <RefreshCw className="w-4 h-4" /> Refresh
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => {
+              resetImport();
+              setImportOpen(true);
+            }}
+            className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground hover:bg-primary/90"
+          >
+            <Upload className="w-4 h-4" /> Import JSON
+          </button>
+          <button
+            onClick={() => load(query)}
+            className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm hover:bg-secondary"
+          >
+            <RefreshCw className="w-4 h-4" /> Refresh
+          </button>
+        </div>
       </header>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -348,9 +497,176 @@ export default function LibraryPage() {
         </div>
       )}
 
+      {importSuccess && (
+        <div
+          data-testid="library-import-success"
+          className="rounded-md border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"
+        >
+          {importSuccess}
+        </div>
+      )}
+
+      <Dialog
+        open={importOpen}
+        onOpenChange={(open) => {
+          setImportOpen(open);
+          if (!open) resetImport();
+        }}
+      >
+        <DialogContent aria-describedby="library-import-description">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileJson className="h-5 w-5 text-primary" /> Import Library JSON
+            </DialogTitle>
+            <DialogDescription id="library-import-description">
+              Import one Lighthouse{" "}
+              <span className="font-mono">library-item.v1</span> JSON export as
+              a new private copy.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <label className="block space-y-2 text-sm font-medium">
+              <span>JSON file</span>
+              <input
+                type="file"
+                accept="application/json,.json"
+                aria-label="Choose JSON file"
+                onChange={(event) =>
+                  void selectImportFile(event.target.files?.[0] ?? null)
+                }
+                className="block w-full rounded-md border border-input bg-background px-3 py-2 text-sm file:mr-3 file:rounded-sm file:border-0 file:bg-secondary file:px-3 file:py-1 file:text-sm"
+              />
+            </label>
+
+            {importFile && (
+              <div className="rounded-md bg-muted/50 px-3 py-2 text-sm">
+                <div className="font-medium break-all">{importFile.name}</div>
+                <div className="text-xs text-muted-foreground">
+                  {formatFileSize(importFile.size)} of 32 KiB maximum
+                </div>
+              </div>
+            )}
+
+            {importError && (
+              <div
+                role="alert"
+                className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              >
+                {importError}
+              </div>
+            )}
+
+            {!importPreview && (
+              <button
+                type="button"
+                onClick={() => void previewSelectedImport()}
+                disabled={!importDocument || isImporting}
+                className="inline-flex w-full items-center justify-center rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-secondary disabled:opacity-50"
+              >
+                {isImporting ? "Checking JSON..." : "Preview import"}
+              </button>
+            )}
+
+            {importPreview && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <h3 className="text-sm font-medium">Sanitized item</h3>
+                  <dl className="grid grid-cols-2 gap-2 rounded-md border border-border p-3 text-sm">
+                    <ImportSummary
+                      label="Title"
+                      value={importPreview.candidate.title}
+                    />
+                    <ImportSummary
+                      label="Type"
+                      value={labelFor(
+                        importPreview.candidate.category,
+                        categoryOptions,
+                      )}
+                    />
+                    <ImportSummary
+                      label="Sensitivity"
+                      value={importPreview.candidate.sensitivity}
+                    />
+                    <ImportSummary
+                      label="Source"
+                      value={
+                        importPreview.candidate.sourceLabel ?? "Not provided"
+                      }
+                    />
+                    <ImportSummary
+                      label="Details"
+                      value={
+                        importPreview.candidate.body
+                          ? `${importPreview.candidate.body.length} characters included`
+                          : "No details"
+                      }
+                    />
+                    <ImportSummary label="Access" value="Private" />
+                  </dl>
+                </div>
+
+                <div
+                  data-testid="library-import-warnings"
+                  className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
+                >
+                  <h3 className="font-medium">Before you import</h3>
+                  <ul className="mt-2 list-disc space-y-1 pl-5">
+                    {importPreview.warnings.map((warning) => (
+                      <li key={warning.code}>{warning.message}</li>
+                    ))}
+                  </ul>
+                </div>
+
+                <label
+                  htmlFor="confirm-private-copy"
+                  className="flex cursor-pointer items-start gap-3 rounded-md border border-border p-3 text-sm"
+                >
+                  <Checkbox
+                    id="confirm-private-copy"
+                    aria-label="Confirm private copy"
+                    checked={importConfirmed}
+                    onCheckedChange={(checked) =>
+                      setImportConfirmed(checked === true)
+                    }
+                  />
+                  <span>
+                    I understand this creates a new private copy, restores no
+                    sharing grants, and preserves no original database IDs.
+                  </span>
+                </label>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setImportOpen(false)}
+              className="rounded-md border border-border px-3 py-2 text-sm hover:bg-secondary"
+            >
+              Cancel
+            </button>
+            {importPreview && (
+              <button
+                type="button"
+                onClick={() => void commitSelectedImport()}
+                disabled={!importConfirmed || isImporting}
+                className="rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                {isImporting ? "Importing..." : "Import private copy"}
+              </button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="grid lg:grid-cols-[390px_minmax(0,1fr)] gap-6">
         <section className="space-y-4">
-          <form onSubmit={createItem} className="rounded-lg border border-border bg-card p-4 space-y-4">
+          <form
+            onSubmit={createItem}
+            className="rounded-lg border border-border bg-card p-4 space-y-4"
+          >
             <div className="flex items-center gap-2">
               <Plus className="w-5 h-5 text-primary" />
               <h2 className="font-serif text-xl">New item</h2>
@@ -370,16 +686,24 @@ export default function LibraryPage() {
               <Field label="Type">
                 <select
                   value={form.category}
-                  onChange={(e) => setForm({ ...form, category: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, category: e.target.value })
+                  }
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
-                  {categoryOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  {categoryOptions.map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
                 </select>
               </Field>
               <Field label="Sensitivity">
                 <select
                   value={form.sensitivity}
-                  onChange={(e) => setForm({ ...form, sensitivity: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, sensitivity: e.target.value })
+                  }
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
                   <option value="standard">Standard</option>
@@ -391,7 +715,9 @@ export default function LibraryPage() {
             </div>
 
             <div className="block space-y-1">
-              <span className="text-xs font-medium text-muted-foreground">Ownership and access</span>
+              <span className="text-xs font-medium text-muted-foreground">
+                Ownership and access
+              </span>
               <div className="grid grid-cols-3 gap-2">
                 {[
                   ["private", "Private"],
@@ -401,10 +727,19 @@ export default function LibraryPage() {
                   <button
                     key={value}
                     type="button"
-                    onClick={() => setForm({ ...form, visibility: value, shareWithUserIds: value === "shared" ? form.shareWithUserIds : [] })}
+                    onClick={() =>
+                      setForm({
+                        ...form,
+                        visibility: value,
+                        shareWithUserIds:
+                          value === "shared" ? form.shareWithUserIds : [],
+                      })
+                    }
                     className={cn(
                       "rounded-md border px-2 py-2 text-xs font-medium",
-                      form.visibility === value ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background hover:bg-secondary",
+                      form.visibility === value
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border bg-background hover:bg-secondary",
                     )}
                   >
                     {label}
@@ -416,14 +751,19 @@ export default function LibraryPage() {
             {form.visibility === "shared" && (
               <div className="space-y-2">
                 {adults.map((adult) => (
-                  <label key={adult.id} className="flex items-center gap-2 text-sm">
+                  <label
+                    key={adult.id}
+                    className="flex items-center gap-2 text-sm"
+                  >
                     <input
                       type="checkbox"
                       checked={form.shareWithUserIds.includes(adult.id)}
                       onChange={(e) => {
                         const next = e.target.checked
                           ? [...form.shareWithUserIds, adult.id]
-                          : form.shareWithUserIds.filter((id) => id !== adult.id);
+                          : form.shareWithUserIds.filter(
+                              (id) => id !== adult.id,
+                            );
                         setForm({ ...form, shareWithUserIds: next });
                       }}
                     />
@@ -434,7 +774,11 @@ export default function LibraryPage() {
             )}
 
             <div className="rounded-md border border-primary/20 bg-primary/5 p-3 text-xs text-primary/90 flex gap-2">
-              {form.visibility === "private" ? <EyeOff className="w-4 h-4 shrink-0" /> : <Users className="w-4 h-4 shrink-0" />}
+              {form.visibility === "private" ? (
+                <EyeOff className="w-4 h-4 shrink-0" />
+              ) : (
+                <Users className="w-4 h-4 shrink-0" />
+              )}
               <span>{accessExplanation}</span>
             </div>
 
@@ -452,7 +796,9 @@ export default function LibraryPage() {
               <Field label="Source">
                 <input
                   value={form.sourceLabel}
-                  onChange={(e) => setForm({ ...form, sourceLabel: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, sourceLabel: e.target.value })
+                  }
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   placeholder="Email, manual note"
                 />
@@ -461,7 +807,9 @@ export default function LibraryPage() {
                 <input
                   type="date"
                   value={form.effectiveDate}
-                  onChange={(e) => setForm({ ...form, effectiveDate: e.target.value })}
+                  onChange={(e) =>
+                    setForm({ ...form, effectiveDate: e.target.value })
+                  }
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 />
               </Field>
@@ -470,7 +818,9 @@ export default function LibraryPage() {
             <Field label="Retention">
               <select
                 value={form.retentionPolicy}
-                onChange={(e) => setForm({ ...form, retentionPolicy: e.target.value })}
+                onChange={(e) =>
+                  setForm({ ...form, retentionPolicy: e.target.value })
+                }
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
               >
                 <option value="keep-until-archived">Keep until archived</option>
@@ -502,12 +852,19 @@ export default function LibraryPage() {
           </div>
 
           {isLoading ? (
-            <div className="rounded-lg border border-border bg-card p-8 text-sm text-muted-foreground">Loading Library...</div>
+            <div className="rounded-lg border border-border bg-card p-8 text-sm text-muted-foreground">
+              Loading Library...
+            </div>
           ) : items.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border p-8 text-center">
               <FileClock className="w-8 h-8 mx-auto text-muted-foreground mb-3" />
-              <h2 className="font-serif text-xl mb-1">No visible Library items</h2>
-              <p className="text-sm text-muted-foreground">Create a private, shared, or household item to start the durable family memory.</p>
+              <h2 className="font-serif text-xl mb-1">
+                No visible Library items
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Create a private, shared, or household item to start the durable
+                family memory.
+              </p>
             </div>
           ) : (
             <div className="grid xl:grid-cols-[minmax(260px,340px)_minmax(0,1fr)] gap-4">
@@ -519,11 +876,15 @@ export default function LibraryPage() {
                     data-testid="library-item-card"
                     className={cn(
                       "w-full rounded-lg border p-3 text-left transition-colors",
-                      selected?.id === item.id ? "border-primary bg-primary/5" : "border-border bg-card hover:bg-secondary/40",
+                      selected?.id === item.id
+                        ? "border-primary bg-primary/5"
+                        : "border-border bg-card hover:bg-secondary/40",
                     )}
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <span className="font-medium text-sm line-clamp-2">{item.title}</span>
+                      <span className="font-medium text-sm line-clamp-2">
+                        {item.title}
+                      </span>
                       <AccessBadge item={item} />
                     </div>
                     <div className="mt-2 flex flex-wrap gap-1 text-[11px] text-muted-foreground">
@@ -536,77 +897,151 @@ export default function LibraryPage() {
               </div>
 
               {selected && (
-                <div data-testid="library-selected-detail" className="rounded-lg border border-border bg-card p-4 md:p-5 space-y-5 min-w-0">
+                <div
+                  data-testid="library-selected-detail"
+                  className="rounded-lg border border-border bg-card p-4 md:p-5 space-y-5 min-w-0"
+                >
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div>
                       <div className="flex flex-wrap gap-2 mb-2">
                         <AccessBadge item={selected} />
-                        <span className="rounded-full bg-secondary px-2 py-1 text-xs text-secondary-foreground">{selected.sensitivity}</span>
-                        {selected.status === "archived" && <span className="rounded-full bg-muted px-2 py-1 text-xs">Archived</span>}
+                        <span className="rounded-full bg-secondary px-2 py-1 text-xs text-secondary-foreground">
+                          {selected.sensitivity}
+                        </span>
+                        {selected.status === "archived" && (
+                          <span className="rounded-full bg-muted px-2 py-1 text-xs">
+                            Archived
+                          </span>
+                        )}
                       </div>
                       <h2 className="font-serif text-2xl">{selected.title}</h2>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {labelFor(selected.category, categoryOptions)} | Updated {new Date(selected.updatedAt).toLocaleString()}
+                        {labelFor(selected.category, categoryOptions)} | Updated{" "}
+                        {new Date(selected.updatedAt).toLocaleString()}
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {isOwner && (
-                        <button onClick={exportSelected} className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border hover:bg-secondary" title="Export JSON" aria-label="Export JSON">
+                        <button
+                          onClick={exportSelected}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border hover:bg-secondary"
+                          title="Export JSON"
+                          aria-label="Export JSON"
+                        >
                           <Download className="w-4 h-4" />
                         </button>
                       )}
                       {isOwner && selected.status !== "archived" && (
-                        <button onClick={() => patchSelected({ status: "archived" })} className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border hover:bg-secondary" title="Archive" aria-label="Archive item">
+                        <button
+                          onClick={() => patchSelected({ status: "archived" })}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border hover:bg-secondary"
+                          title="Archive"
+                          aria-label="Archive item"
+                        >
                           <Archive className="w-4 h-4" />
                         </button>
                       )}
                       {isOwner && selected.status === "archived" && (
-                        <button onClick={() => patchSelected({ status: "active" })} className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border hover:bg-secondary" title="Restore" aria-label="Restore item">
+                        <button
+                          onClick={() => patchSelected({ status: "active" })}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border hover:bg-secondary"
+                          title="Restore"
+                          aria-label="Restore item"
+                        >
                           <Undo2 className="w-4 h-4" />
                         </button>
                       )}
                       {isOwner && (
-                        <button onClick={deleteSelected} className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-destructive hover:bg-destructive/10" title="Delete" aria-label="Delete item">
+                        <button
+                          onClick={deleteSelected}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border text-destructive hover:bg-destructive/10"
+                          title="Delete"
+                          aria-label="Delete item"
+                        >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       )}
                     </div>
                   </div>
 
-                  <div data-testid="library-selected-body" className="rounded-md bg-muted/40 p-4 text-sm whitespace-pre-wrap min-h-24">
+                  <div
+                    data-testid="library-selected-body"
+                    className="rounded-md bg-muted/40 p-4 text-sm whitespace-pre-wrap min-h-24"
+                  >
                     {selected.body || "No details recorded."}
                   </div>
 
                   <div className="grid sm:grid-cols-2 gap-3 text-sm">
-                    <Info label="Source" value={selected.sourceLabel || selected.sourceType} />
-                    <Info label="Effective date" value={selected.effectiveDate || "Not set"} />
+                    <Info
+                      label="Source"
+                      value={selected.sourceLabel || selected.sourceType}
+                    />
+                    <Info
+                      label="Effective date"
+                      value={selected.effectiveDate || "Not set"}
+                    />
                     <Info label="Retention" value={selected.retentionPolicy} />
-                    <Info label="Owner" value={selected.ownerUserId === user?.id ? "You" : memberName(members, selected.ownerUserId)} />
+                    <Info
+                      label="Owner"
+                      value={
+                        selected.ownerUserId === user?.id
+                          ? "You"
+                          : memberName(members, selected.ownerUserId)
+                      }
+                    />
                   </div>
 
                   {isOwner && selected.visibility !== "household" && (
                     <div className="rounded-md border border-border p-3 space-y-3">
-                      <h3 className="text-sm font-medium flex items-center gap-2"><Share2 className="w-4 h-4" /> Sharing</h3>
+                      <h3 className="text-sm font-medium flex items-center gap-2">
+                        <Share2 className="w-4 h-4" /> Sharing
+                      </h3>
                       {selectedActiveGrants.length > 0 ? (
-                        <div data-testid="library-active-grants" className="space-y-2">
+                        <div
+                          data-testid="library-active-grants"
+                          className="space-y-2"
+                        >
                           {selectedActiveGrants.map((grant) => (
-                            <div key={grant.id} className="flex items-center justify-between gap-3 text-sm">
-                              <span>{memberName(members, grant.granteeUserId)}</span>
-                              <button onClick={() => revokeGrant(grant)} className="rounded-md border border-border px-2 py-1 text-xs hover:bg-secondary">
+                            <div
+                              key={grant.id}
+                              className="flex items-center justify-between gap-3 text-sm"
+                            >
+                              <span>
+                                {memberName(members, grant.granteeUserId)}
+                              </span>
+                              <button
+                                onClick={() => revokeGrant(grant)}
+                                className="rounded-md border border-border px-2 py-1 text-xs hover:bg-secondary"
+                              >
                                 Revoke
                               </button>
                             </div>
                           ))}
                         </div>
                       ) : (
-                        <p className="text-xs text-muted-foreground">No active sharing grants.</p>
+                        <p className="text-xs text-muted-foreground">
+                          No active sharing grants.
+                        </p>
                       )}
                       <div className="flex gap-2">
-                        <select aria-label="Share with adult" value={shareTarget} onChange={(e) => setShareTarget(e.target.value)} className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm">
+                        <select
+                          aria-label="Share with adult"
+                          value={shareTarget}
+                          onChange={(e) => setShareTarget(e.target.value)}
+                          className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        >
                           <option value="">Select adult</option>
-                          {adults.map((adult) => <option key={adult.id} value={adult.id}>{adult.displayName}</option>)}
+                          {adults.map((adult) => (
+                            <option key={adult.id} value={adult.id}>
+                              {adult.displayName}
+                            </option>
+                          ))}
                         </select>
-                        <button onClick={shareSelected} disabled={!shareTarget} className="rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50">
+                        <button
+                          onClick={shareSelected}
+                          disabled={!shareTarget}
+                          className="rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50"
+                        >
                           Share
                         </button>
                       </div>
@@ -633,15 +1068,27 @@ export default function LibraryPage() {
                   )}
 
                   <div className="space-y-2">
-                    <h3 className="text-sm font-medium flex items-center gap-2"><History className="w-4 h-4" /> Audit history</h3>
+                    <h3 className="text-sm font-medium flex items-center gap-2">
+                      <History className="w-4 h-4" /> Audit history
+                    </h3>
                     {auditEvents.length === 0 ? (
-                      <p className="text-xs text-muted-foreground">Audit history is available to the owner or household context.</p>
+                      <p className="text-xs text-muted-foreground">
+                        Audit history is available to the owner or household
+                        context.
+                      </p>
                     ) : (
                       <div className="space-y-2">
                         {auditEvents.map((event) => (
-                          <div key={event.id} className="rounded-md bg-muted/40 px-3 py-2 text-xs">
+                          <div
+                            key={event.id}
+                            className="rounded-md bg-muted/40 px-3 py-2 text-xs"
+                          >
                             <div className="font-medium">{event.summary}</div>
-                            <div className="text-muted-foreground">{event.eventType} by {memberName(members, event.actorUserId)} on {new Date(event.createdAt).toLocaleString()}</div>
+                            <div className="text-muted-foreground">
+                              {event.eventType} by{" "}
+                              {memberName(members, event.actorUserId)} on{" "}
+                              {new Date(event.createdAt).toLocaleString()}
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -657,7 +1104,13 @@ export default function LibraryPage() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <label className="block space-y-1">
       <span className="text-xs font-medium text-muted-foreground">{label}</span>
@@ -684,8 +1137,29 @@ function Info({ label, value }: { label: string; value: string }) {
   );
 }
 
+function ImportSummary({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="break-words font-medium">{value}</dd>
+    </div>
+  );
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} bytes`;
+  return `${(bytes / 1024).toFixed(1)} KiB`;
+}
+
 function AccessBadge({ item }: { item: LibraryItem }) {
-  const icon = item.visibility === "private" ? <Lock className="w-3 h-3" /> : item.visibility === "shared" ? <Share2 className="w-3 h-3" /> : <Users className="w-3 h-3" />;
+  const icon =
+    item.visibility === "private" ? (
+      <Lock className="w-3 h-3" />
+    ) : item.visibility === "shared" ? (
+      <Share2 className="w-3 h-3" />
+    ) : (
+      <Users className="w-3 h-3" />
+    );
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-1 text-[11px] font-medium capitalize text-secondary-foreground">
       {icon}
@@ -695,5 +1169,7 @@ function AccessBadge({ item }: { item: LibraryItem }) {
 }
 
 function memberName(members: Member[], id: number) {
-  return members.find((member) => member.id === id)?.displayName ?? `Member ${id}`;
+  return (
+    members.find((member) => member.id === id)?.displayName ?? `Member ${id}`
+  );
 }

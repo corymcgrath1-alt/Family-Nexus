@@ -5,6 +5,372 @@
  * Lighthouse API - consent-native family intelligence operating system
  * OpenAPI spec version: 0.1.0
  */
+export interface ErrorResponse {
+  error: string;
+  details?: string[];
+}
+
+export type ConnectorStatus = typeof ConnectorStatus[keyof typeof ConnectorStatus];
+
+
+export const ConnectorStatus = {
+  available: 'available',
+  deferred: 'deferred',
+  unsupported: 'unsupported',
+  prohibited: 'prohibited',
+} as const;
+
+export type ConnectorCollectionMode = typeof ConnectorCollectionMode[keyof typeof ConnectorCollectionMode];
+
+
+export const ConnectorCollectionMode = {
+  'manual-upload': 'manual-upload',
+  'live-oauth-api': 'live-oauth-api',
+  'periodic-api': 'periodic-api',
+  'user-authorized-platform-collector': 'user-authorized-platform-collector',
+  'data-portability-export': 'data-portability-export',
+  'local-only': 'local-only',
+  unsupported: 'unsupported',
+  prohibited: 'prohibited',
+} as const;
+
+export type ConnectorDataCategory = typeof ConnectorDataCategory[keyof typeof ConnectorDataCategory];
+
+
+export const ConnectorDataCategory = {
+  'family-library-records': 'family-library-records',
+  documents: 'documents',
+  'household-records': 'household-records',
+  'app-usage': 'app-usage',
+  'screen-time': 'screen-time',
+  'health-data': 'health-data',
+  'google-portability-exports': 'google-portability-exports',
+  'social-media-history': 'social-media-history',
+  'device-telemetry': 'device-telemetry',
+  'device-or-app-behavior': 'device-or-app-behavior',
+} as const;
+
+export type ConnectorAllowedPurpose = typeof ConnectorAllowedPurpose[keyof typeof ConnectorAllowedPurpose];
+
+
+export const ConnectorAllowedPurpose = {
+  remember: 'remember',
+  search: 'search',
+  'user-directed-import': 'user-directed-import',
+  'user-directed-export': 'user-directed-export',
+  'personal-insight': 'personal-insight',
+  'household-coordination': 'household-coordination',
+} as const;
+
+export type ConnectorTermsReviewStatus = typeof ConnectorTermsReviewStatus[keyof typeof ConnectorTermsReviewStatus];
+
+
+export const ConnectorTermsReviewStatus = {
+  reviewed: 'reviewed',
+  'review-required': 'review-required',
+  unsupported: 'unsupported',
+  prohibited: 'prohibited',
+} as const;
+
+export type ConnectorSensitivityClass = typeof ConnectorSensitivityClass[keyof typeof ConnectorSensitivityClass];
+
+
+export const ConnectorSensitivityClass = {
+  standard: 'standard',
+  personal: 'personal',
+  sensitive: 'sensitive',
+  restricted: 'restricted',
+} as const;
+
+export interface ConnectorDefinition {
+  /**
+     * @maxLength 80
+     * @pattern ^[a-z0-9]+(?:-[a-z0-9]+)*$
+     */
+  id: string;
+  provider: string;
+  displayName: string;
+  description: string;
+  dataCategories: ConnectorDataCategory[];
+  collectionMode: ConnectorCollectionMode;
+  status: ConnectorStatus;
+  requiredScopes: string[];
+  authorizationRequirements: string[];
+  allowedPurposes: ConnectorAllowedPurpose[];
+  prohibitedUses: string[];
+  sensitivity: ConnectorSensitivityClass;
+  refreshLimitations: string;
+  regionalPlatformLimitations: string[];
+  termsReviewStatus: ConnectorTermsReviewStatus;
+  importSupport: boolean;
+  exportSupport: boolean;
+  /** @nullable */
+  unavailableReason: string | null;
+  canCollectAnotherAdultData: false;
+}
+
+export interface ConnectorCatalogResponse {
+  catalogVersion: 'connector-catalog.v1';
+  connectors: ConnectorDefinition[];
+}
+
+export interface ConnectorCatalogDetailResponse {
+  catalogVersion: 'connector-catalog.v1';
+  connector: ConnectorDefinition;
+}
+
+export type LibraryItemCategory = typeof LibraryItemCategory[keyof typeof LibraryItemCategory];
+
+
+export const LibraryItemCategory = {
+  note: 'note',
+  'document-reference': 'document-reference',
+  instruction: 'instruction',
+  decision: 'decision',
+  memory: 'memory',
+  'medical-reference': 'medical-reference',
+  'household-record': 'household-record',
+  'vehicle-record': 'vehicle-record',
+  'career-record': 'career-record',
+  other: 'other',
+} as const;
+
+export type LibraryItemSensitivity = typeof LibraryItemSensitivity[keyof typeof LibraryItemSensitivity];
+
+
+export const LibraryItemSensitivity = {
+  standard: 'standard',
+  personal: 'personal',
+  sensitive: 'sensitive',
+  restricted: 'restricted',
+} as const;
+
+export type LibraryItemRetentionPolicy = typeof LibraryItemRetentionPolicy[keyof typeof LibraryItemRetentionPolicy];
+
+
+export const LibraryItemRetentionPolicy = {
+  'keep-until-archived': 'keep-until-archived',
+  'review-annually': 'review-annually',
+  'delete-after-date': 'delete-after-date',
+  'legal-hold': 'legal-hold',
+} as const;
+
+export interface LibraryItemExportProvenance {
+  /** @maxLength 80 */
+  sourceType?: string;
+  /**
+     * @maxLength 260
+     * @nullable
+     */
+  sourceLabel?: string | null;
+  /**
+     * @maxLength 1000
+     * @nullable
+     */
+  note?: string | null;
+  recordedByUserId?: number;
+  correctedByUserId?: number;
+  correctedAt?: string;
+  connectorId?: string;
+  originalFormatVersion?: string;
+  importedAt?: string;
+  /**
+     * @maxLength 260
+     * @nullable
+     */
+  originalSourceLabel?: string | null;
+}
+
+export type LibraryItemImportSourceGrantsItem = {
+  id?: number;
+  granteeUserId?: number;
+  permission?: string;
+  purpose?: string;
+  createdAt?: string;
+  /** @nullable */
+  revokedAt?: string | null;
+  /** @nullable */
+  expiresAt?: string | null;
+};
+
+export interface LibraryItemImportSource {
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
+  title: string;
+  category?: LibraryItemCategory;
+  /**
+     * @maxLength 12000
+     * @nullable
+     */
+  body?: string | null;
+  /**
+     * @maxLength 260
+     * @nullable
+     */
+  sourceLabel?: string | null;
+  /**
+     * @nullable
+     * @pattern ^\d{4}-\d{2}-\d{2}$
+     */
+  effectiveDate?: string | null;
+  sensitivity?: LibraryItemSensitivity;
+  retentionPolicy?: LibraryItemRetentionPolicy;
+  /**
+     * @nullable
+     * @pattern ^\d{4}-\d{2}-\d{2}$
+     */
+  retentionDeleteAfter?: string | null;
+  provenance?: LibraryItemExportProvenance;
+  id?: number;
+  householdId?: number;
+  ownerUserId?: number;
+  /** @nullable */
+  subjectUserId?: number | null;
+  ownerKind?: string;
+  visibility?: string;
+  sourceType?: string;
+  allowedPurposes?: string[];
+  status?: string;
+  version?: number;
+  createdById?: number;
+  updatedById?: number;
+  /** @nullable */
+  archivedAt?: string | null;
+  /** @nullable */
+  deletedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  /** @maxItems 100 */
+  grants?: LibraryItemImportSourceGrantsItem[];
+}
+
+export interface LibraryItemImportDocument {
+  /** @maxLength 80 */
+  connectorId?: string;
+  formatVersion: 'library-item.v1';
+  exportedAt?: string;
+  item: LibraryItemImportSource;
+}
+
+export interface LibraryImportCandidate {
+  title: string;
+  category: LibraryItemCategory;
+  /** @nullable */
+  body: string | null;
+  /** @nullable */
+  sourceLabel: string | null;
+  /** @nullable */
+  effectiveDate: string | null;
+  sensitivity: LibraryItemSensitivity;
+  retentionPolicy: LibraryItemRetentionPolicy;
+  /** @nullable */
+  retentionDeleteAfter: string | null;
+  /** @nullable */
+  provenanceNote: string | null;
+  visibility: 'private';
+  status: 'active';
+  sourceType: 'import';
+}
+
+export type LibraryImportWarningCode = typeof LibraryImportWarningCode[keyof typeof LibraryImportWarningCode];
+
+
+export const LibraryImportWarningCode = {
+  'private-copy': 'private-copy',
+  'sharing-not-restored': 'sharing-not-restored',
+  'identifiers-not-preserved': 'identifiers-not-preserved',
+  'lifecycle-reset': 'lifecycle-reset',
+  'fields-not-imported': 'fields-not-imported',
+} as const;
+
+export interface LibraryImportWarning {
+  code: LibraryImportWarningCode;
+  message: string;
+  fields: string[];
+}
+
+export interface LibraryImportPreview {
+  formatVersion: 'library-item.v1';
+  connectorId: 'manual-family-library';
+  candidate: LibraryImportCandidate;
+  warnings: LibraryImportWarning[];
+}
+
+export interface LibraryImportCommitRequest {
+  confirmPrivateCopy: true;
+  document: LibraryItemImportDocument;
+}
+
+export interface LibraryItemGrant {
+  id: number;
+  granteeUserId: number;
+  permission: string;
+  purpose: string;
+  createdAt: string;
+  /** @nullable */
+  revokedAt: string | null;
+  /** @nullable */
+  expiresAt: string | null;
+}
+
+export type LibraryItemVisibility = typeof LibraryItemVisibility[keyof typeof LibraryItemVisibility];
+
+
+export const LibraryItemVisibility = {
+  private: 'private',
+  shared: 'shared',
+  household: 'household',
+} as const;
+
+export type LibraryItemProvenance = { [key: string]: unknown };
+
+export type LibraryItemStatus = typeof LibraryItemStatus[keyof typeof LibraryItemStatus];
+
+
+export const LibraryItemStatus = {
+  active: 'active',
+  archived: 'archived',
+  deleted: 'deleted',
+} as const;
+
+export interface LibraryItem {
+  id: number;
+  householdId: number;
+  ownerUserId: number;
+  /** @nullable */
+  subjectUserId: number | null;
+  ownerKind: string;
+  visibility: LibraryItemVisibility;
+  category: LibraryItemCategory;
+  title: string;
+  /** @nullable */
+  body: string | null;
+  sourceType: string;
+  /** @nullable */
+  sourceLabel: string | null;
+  provenance: LibraryItemProvenance;
+  /** @nullable */
+  effectiveDate: string | null;
+  sensitivity: LibraryItemSensitivity;
+  retentionPolicy: LibraryItemRetentionPolicy;
+  /** @nullable */
+  retentionDeleteAfter: string | null;
+  allowedPurposes: string[];
+  status: LibraryItemStatus;
+  version: number;
+  createdById: number;
+  updatedById: number;
+  /** @nullable */
+  archivedAt: string | null;
+  /** @nullable */
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  grants: LibraryItemGrant[];
+}
+
 export interface HealthStatus {
   status: string;
 }

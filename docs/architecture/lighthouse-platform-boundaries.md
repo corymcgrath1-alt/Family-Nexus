@@ -2,7 +2,7 @@
 
 ## Current Implementation Status
 
-Lighthouse is currently a modular monolith prototype: one Vite app, one Express API, shared TypeScript libraries, and PostgreSQL through Drizzle. The code has session authentication, household membership, relationship-support experiences, messages, planning tasks, memories, profiles, reflections, Family Library records, sharing grants, redacted Library audit events, and row-level security for the Lighthouse-owned privacy tables. It does not yet have production identity, application-wide row-level security for legacy tables, external connectors, encryption-at-rest controls, or full consent lifecycle automation.
+Lighthouse is currently a modular monolith prototype: one Vite app, one Express API, shared TypeScript libraries, and PostgreSQL through Drizzle. The code has session authentication, household membership, relationship-support experiences, messages, planning tasks, memories, profiles, reflections, Family Library records, sharing grants, redacted Library audit events, row-level security for the Lighthouse-owned privacy tables, an immutable connector capability catalog, and a bounded manual Library JSON import. It does not yet have production identity, application-wide row-level security for legacy tables, live external connectors, encryption-at-rest controls, or full consent lifecycle automation.
 
 ## Product Scope
 
@@ -34,6 +34,12 @@ Relationship-support features are one domain under Connection. They are not the 
 Every adult owns their account, private vault, raw imports, self-reports, derived insights, sharing permissions, export rights, and deletion rights. Household administration manages membership and shared infrastructure; it is not superuser access to another adult's private vault.
 
 One adult must not authorize phone, location, health, financial, media, browsing, social, mood, or behavioral tracking for another adult.
+
+## Connector and Import Boundary
+
+The server-owned `connector-catalog.v1` registry is immutable application code, not mutable user data. Only `manual-family-library` is available. Deferred, unsupported, and prohibited entries expose limitations but no activation state, credentials, URLs, or other-adult authorization path.
+
+Manual import accepts one bounded `library-item.v1` JSON document. Preview is write-free. Commit revalidates the original document inside authenticated database actor context and creates a new private, active, actor-owned item. Source IDs, identity references, lifecycle state, timestamps, versions, purposes, visibility, and sharing grants cannot cross the import boundary. No binary storage or external network collection is part of this path.
 
 ## Lighthouse Passport IDs
 

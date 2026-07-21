@@ -1026,3 +1026,307 @@ export const GetTodaySummaryResponse = zod.object({
 })
 
 
+/**
+ * @summary List connector capabilities
+ */
+export const listConnectorCatalogResponseConnectorsItemIdMax = 80;
+
+
+export const listConnectorCatalogResponseConnectorsItemIdRegExp = new RegExp('^[a-z0-9]+(?:-[a-z0-9]+)*$');
+
+
+export const ListConnectorCatalogResponse = zod.object({
+  "catalogVersion": zod.literal("connector-catalog.v1"),
+  "connectors": zod.array(zod.object({
+  "id": zod.string().max(listConnectorCatalogResponseConnectorsItemIdMax).regex(listConnectorCatalogResponseConnectorsItemIdRegExp),
+  "provider": zod.string(),
+  "displayName": zod.string(),
+  "description": zod.string(),
+  "dataCategories": zod.array(zod.enum(['family-library-records', 'documents', 'household-records', 'app-usage', 'screen-time', 'health-data', 'google-portability-exports', 'social-media-history', 'device-telemetry', 'device-or-app-behavior'])),
+  "collectionMode": zod.enum(['manual-upload', 'live-oauth-api', 'periodic-api', 'user-authorized-platform-collector', 'data-portability-export', 'local-only', 'unsupported', 'prohibited']),
+  "status": zod.enum(['available', 'deferred', 'unsupported', 'prohibited']),
+  "requiredScopes": zod.array(zod.string()),
+  "authorizationRequirements": zod.array(zod.string()),
+  "allowedPurposes": zod.array(zod.enum(['remember', 'search', 'user-directed-import', 'user-directed-export', 'personal-insight', 'household-coordination'])),
+  "prohibitedUses": zod.array(zod.string()),
+  "sensitivity": zod.enum(['standard', 'personal', 'sensitive', 'restricted']),
+  "refreshLimitations": zod.string(),
+  "regionalPlatformLimitations": zod.array(zod.string()),
+  "termsReviewStatus": zod.enum(['reviewed', 'review-required', 'unsupported', 'prohibited']),
+  "importSupport": zod.boolean(),
+  "exportSupport": zod.boolean(),
+  "unavailableReason": zod.string().nullable(),
+  "canCollectAnotherAdultData": zod.boolean()
+}))
+})
+
+
+/**
+ * @summary Get one connector capability
+ */
+export const getConnectorCatalogPathConnectorIdMax = 80;
+
+
+export const getConnectorCatalogPathConnectorIdRegExp = new RegExp('^[a-z0-9]+(?:-[a-z0-9]+)*$');
+
+
+export const GetConnectorCatalogParams = zod.object({
+  "connectorId": zod.coerce.string().max(getConnectorCatalogPathConnectorIdMax).regex(getConnectorCatalogPathConnectorIdRegExp)
+})
+
+export const getConnectorCatalogResponseConnectorIdMax = 80;
+
+
+export const getConnectorCatalogResponseConnectorIdRegExp = new RegExp('^[a-z0-9]+(?:-[a-z0-9]+)*$');
+
+
+export const GetConnectorCatalogResponse = zod.object({
+  "catalogVersion": zod.literal("connector-catalog.v1"),
+  "connector": zod.object({
+  "id": zod.string().max(getConnectorCatalogResponseConnectorIdMax).regex(getConnectorCatalogResponseConnectorIdRegExp),
+  "provider": zod.string(),
+  "displayName": zod.string(),
+  "description": zod.string(),
+  "dataCategories": zod.array(zod.enum(['family-library-records', 'documents', 'household-records', 'app-usage', 'screen-time', 'health-data', 'google-portability-exports', 'social-media-history', 'device-telemetry', 'device-or-app-behavior'])),
+  "collectionMode": zod.enum(['manual-upload', 'live-oauth-api', 'periodic-api', 'user-authorized-platform-collector', 'data-portability-export', 'local-only', 'unsupported', 'prohibited']),
+  "status": zod.enum(['available', 'deferred', 'unsupported', 'prohibited']),
+  "requiredScopes": zod.array(zod.string()),
+  "authorizationRequirements": zod.array(zod.string()),
+  "allowedPurposes": zod.array(zod.enum(['remember', 'search', 'user-directed-import', 'user-directed-export', 'personal-insight', 'household-coordination'])),
+  "prohibitedUses": zod.array(zod.string()),
+  "sensitivity": zod.enum(['standard', 'personal', 'sensitive', 'restricted']),
+  "refreshLimitations": zod.string(),
+  "regionalPlatformLimitations": zod.array(zod.string()),
+  "termsReviewStatus": zod.enum(['reviewed', 'review-required', 'unsupported', 'prohibited']),
+  "importSupport": zod.boolean(),
+  "exportSupport": zod.boolean(),
+  "unavailableReason": zod.string().nullable(),
+  "canCollectAnotherAdultData": zod.boolean()
+})
+})
+
+
+/**
+ * @summary Preview a private Family Library JSON import
+ */
+export const previewLibraryImportBodyConnectorIdDefault = `manual-family-library`;
+export const previewLibraryImportBodyConnectorIdMax = 80;
+
+export const previewLibraryImportBodyItemTitleMax = 160;
+
+export const previewLibraryImportBodyItemBodyMax = 12000;
+
+export const previewLibraryImportBodyItemSourceLabelMax = 260;
+
+export const previewLibraryImportBodyItemEffectiveDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const previewLibraryImportBodyItemRetentionDeleteAfterRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const previewLibraryImportBodyItemProvenanceSourceTypeMax = 80;
+
+export const previewLibraryImportBodyItemProvenanceSourceLabelMax = 260;
+
+export const previewLibraryImportBodyItemProvenanceNoteMax = 1000;
+
+export const previewLibraryImportBodyItemProvenanceOriginalSourceLabelMax = 260;
+
+export const previewLibraryImportBodyItemGrantsMax = 100;
+
+
+
+export const PreviewLibraryImportBody = zod.object({
+  "connectorId": zod.string().max(previewLibraryImportBodyConnectorIdMax).default(previewLibraryImportBodyConnectorIdDefault),
+  "formatVersion": zod.literal("library-item.v1"),
+  "exportedAt": zod.coerce.date().optional(),
+  "item": zod.object({
+  "title": zod.string().min(1).max(previewLibraryImportBodyItemTitleMax),
+  "category": zod.enum(['note', 'document-reference', 'instruction', 'decision', 'memory', 'medical-reference', 'household-record', 'vehicle-record', 'career-record', 'other']).optional(),
+  "body": zod.string().max(previewLibraryImportBodyItemBodyMax).nullish(),
+  "sourceLabel": zod.string().max(previewLibraryImportBodyItemSourceLabelMax).nullish(),
+  "effectiveDate": zod.string().regex(previewLibraryImportBodyItemEffectiveDateRegExp).nullish(),
+  "sensitivity": zod.enum(['standard', 'personal', 'sensitive', 'restricted']).optional(),
+  "retentionPolicy": zod.enum(['keep-until-archived', 'review-annually', 'delete-after-date', 'legal-hold']).optional(),
+  "retentionDeleteAfter": zod.string().regex(previewLibraryImportBodyItemRetentionDeleteAfterRegExp).nullish(),
+  "provenance": zod.object({
+  "sourceType": zod.string().max(previewLibraryImportBodyItemProvenanceSourceTypeMax).optional(),
+  "sourceLabel": zod.string().max(previewLibraryImportBodyItemProvenanceSourceLabelMax).nullish(),
+  "note": zod.string().max(previewLibraryImportBodyItemProvenanceNoteMax).nullish(),
+  "recordedByUserId": zod.number().optional(),
+  "correctedByUserId": zod.number().optional(),
+  "correctedAt": zod.coerce.date().optional(),
+  "connectorId": zod.string().optional(),
+  "originalFormatVersion": zod.string().optional(),
+  "importedAt": zod.coerce.date().optional(),
+  "originalSourceLabel": zod.string().max(previewLibraryImportBodyItemProvenanceOriginalSourceLabelMax).nullish()
+}).optional(),
+  "id": zod.number().optional(),
+  "householdId": zod.number().optional(),
+  "ownerUserId": zod.number().optional(),
+  "subjectUserId": zod.number().nullish(),
+  "ownerKind": zod.string().optional(),
+  "visibility": zod.string().optional(),
+  "sourceType": zod.string().optional(),
+  "allowedPurposes": zod.array(zod.string()).optional(),
+  "status": zod.string().optional(),
+  "version": zod.number().optional(),
+  "createdById": zod.number().optional(),
+  "updatedById": zod.number().optional(),
+  "archivedAt": zod.coerce.date().nullish(),
+  "deletedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date().optional(),
+  "updatedAt": zod.coerce.date().optional(),
+  "grants": zod.array(zod.object({
+  "id": zod.number().optional(),
+  "granteeUserId": zod.number().optional(),
+  "permission": zod.string().optional(),
+  "purpose": zod.string().optional(),
+  "createdAt": zod.coerce.date().optional(),
+  "revokedAt": zod.coerce.date().nullish(),
+  "expiresAt": zod.coerce.date().nullish()
+})).max(previewLibraryImportBodyItemGrantsMax).optional()
+})
+})
+
+export const PreviewLibraryImportResponse = zod.object({
+  "formatVersion": zod.literal("library-item.v1"),
+  "connectorId": zod.literal("manual-family-library"),
+  "candidate": zod.object({
+  "title": zod.string(),
+  "category": zod.enum(['note', 'document-reference', 'instruction', 'decision', 'memory', 'medical-reference', 'household-record', 'vehicle-record', 'career-record', 'other']),
+  "body": zod.string().nullable(),
+  "sourceLabel": zod.string().nullable(),
+  "effectiveDate": zod.string().nullable(),
+  "sensitivity": zod.enum(['standard', 'personal', 'sensitive', 'restricted']),
+  "retentionPolicy": zod.enum(['keep-until-archived', 'review-annually', 'delete-after-date', 'legal-hold']),
+  "retentionDeleteAfter": zod.string().nullable(),
+  "provenanceNote": zod.string().nullable(),
+  "visibility": zod.literal("private"),
+  "status": zod.literal("active"),
+  "sourceType": zod.literal("import")
+}),
+  "warnings": zod.array(zod.object({
+  "code": zod.enum(['private-copy', 'sharing-not-restored', 'identifiers-not-preserved', 'lifecycle-reset', 'fields-not-imported']),
+  "message": zod.string(),
+  "fields": zod.array(zod.string())
+}))
+})
+
+
+/**
+ * @summary Create a private Family Library copy from JSON
+ */
+export const commitLibraryImportBodyDocumentConnectorIdDefault = `manual-family-library`;
+export const commitLibraryImportBodyDocumentConnectorIdMax = 80;
+
+export const commitLibraryImportBodyDocumentItemTitleMax = 160;
+
+export const commitLibraryImportBodyDocumentItemBodyMax = 12000;
+
+export const commitLibraryImportBodyDocumentItemSourceLabelMax = 260;
+
+export const commitLibraryImportBodyDocumentItemEffectiveDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const commitLibraryImportBodyDocumentItemRetentionDeleteAfterRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const commitLibraryImportBodyDocumentItemProvenanceSourceTypeMax = 80;
+
+export const commitLibraryImportBodyDocumentItemProvenanceSourceLabelMax = 260;
+
+export const commitLibraryImportBodyDocumentItemProvenanceNoteMax = 1000;
+
+export const commitLibraryImportBodyDocumentItemProvenanceOriginalSourceLabelMax = 260;
+
+export const commitLibraryImportBodyDocumentItemGrantsMax = 100;
+
+
+
+export const CommitLibraryImportBody = zod.object({
+  "confirmPrivateCopy": zod.boolean(),
+  "document": zod.object({
+  "connectorId": zod.string().max(commitLibraryImportBodyDocumentConnectorIdMax).default(commitLibraryImportBodyDocumentConnectorIdDefault),
+  "formatVersion": zod.literal("library-item.v1"),
+  "exportedAt": zod.coerce.date().optional(),
+  "item": zod.object({
+  "title": zod.string().min(1).max(commitLibraryImportBodyDocumentItemTitleMax),
+  "category": zod.enum(['note', 'document-reference', 'instruction', 'decision', 'memory', 'medical-reference', 'household-record', 'vehicle-record', 'career-record', 'other']).optional(),
+  "body": zod.string().max(commitLibraryImportBodyDocumentItemBodyMax).nullish(),
+  "sourceLabel": zod.string().max(commitLibraryImportBodyDocumentItemSourceLabelMax).nullish(),
+  "effectiveDate": zod.string().regex(commitLibraryImportBodyDocumentItemEffectiveDateRegExp).nullish(),
+  "sensitivity": zod.enum(['standard', 'personal', 'sensitive', 'restricted']).optional(),
+  "retentionPolicy": zod.enum(['keep-until-archived', 'review-annually', 'delete-after-date', 'legal-hold']).optional(),
+  "retentionDeleteAfter": zod.string().regex(commitLibraryImportBodyDocumentItemRetentionDeleteAfterRegExp).nullish(),
+  "provenance": zod.object({
+  "sourceType": zod.string().max(commitLibraryImportBodyDocumentItemProvenanceSourceTypeMax).optional(),
+  "sourceLabel": zod.string().max(commitLibraryImportBodyDocumentItemProvenanceSourceLabelMax).nullish(),
+  "note": zod.string().max(commitLibraryImportBodyDocumentItemProvenanceNoteMax).nullish(),
+  "recordedByUserId": zod.number().optional(),
+  "correctedByUserId": zod.number().optional(),
+  "correctedAt": zod.coerce.date().optional(),
+  "connectorId": zod.string().optional(),
+  "originalFormatVersion": zod.string().optional(),
+  "importedAt": zod.coerce.date().optional(),
+  "originalSourceLabel": zod.string().max(commitLibraryImportBodyDocumentItemProvenanceOriginalSourceLabelMax).nullish()
+}).optional(),
+  "id": zod.number().optional(),
+  "householdId": zod.number().optional(),
+  "ownerUserId": zod.number().optional(),
+  "subjectUserId": zod.number().nullish(),
+  "ownerKind": zod.string().optional(),
+  "visibility": zod.string().optional(),
+  "sourceType": zod.string().optional(),
+  "allowedPurposes": zod.array(zod.string()).optional(),
+  "status": zod.string().optional(),
+  "version": zod.number().optional(),
+  "createdById": zod.number().optional(),
+  "updatedById": zod.number().optional(),
+  "archivedAt": zod.coerce.date().nullish(),
+  "deletedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date().optional(),
+  "updatedAt": zod.coerce.date().optional(),
+  "grants": zod.array(zod.object({
+  "id": zod.number().optional(),
+  "granteeUserId": zod.number().optional(),
+  "permission": zod.string().optional(),
+  "purpose": zod.string().optional(),
+  "createdAt": zod.coerce.date().optional(),
+  "revokedAt": zod.coerce.date().nullish(),
+  "expiresAt": zod.coerce.date().nullish()
+})).max(commitLibraryImportBodyDocumentItemGrantsMax).optional()
+})
+})
+})
+
+export const CommitLibraryImportResponse = zod.object({
+  "id": zod.number(),
+  "householdId": zod.number(),
+  "ownerUserId": zod.number(),
+  "subjectUserId": zod.number().nullable(),
+  "ownerKind": zod.string(),
+  "visibility": zod.enum(['private', 'shared', 'household']),
+  "category": zod.enum(['note', 'document-reference', 'instruction', 'decision', 'memory', 'medical-reference', 'household-record', 'vehicle-record', 'career-record', 'other']),
+  "title": zod.string(),
+  "body": zod.string().nullable(),
+  "sourceType": zod.string(),
+  "sourceLabel": zod.string().nullable(),
+  "provenance": zod.record(zod.string(), zod.unknown()),
+  "effectiveDate": zod.string().nullable(),
+  "sensitivity": zod.enum(['standard', 'personal', 'sensitive', 'restricted']),
+  "retentionPolicy": zod.enum(['keep-until-archived', 'review-annually', 'delete-after-date', 'legal-hold']),
+  "retentionDeleteAfter": zod.string().nullable(),
+  "allowedPurposes": zod.array(zod.string()),
+  "status": zod.enum(['active', 'archived', 'deleted']),
+  "version": zod.number(),
+  "createdById": zod.number(),
+  "updatedById": zod.number(),
+  "archivedAt": zod.coerce.date().nullable(),
+  "deletedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "grants": zod.array(zod.object({
+  "id": zod.number(),
+  "granteeUserId": zod.number(),
+  "permission": zod.string(),
+  "purpose": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "revokedAt": zod.coerce.date().nullable(),
+  "expiresAt": zod.coerce.date().nullable()
+}))
+})
+
+

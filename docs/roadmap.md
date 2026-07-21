@@ -19,9 +19,10 @@
 
 ## Phase 3: Consent and Connector Registry
 
-- Add typed connector capability registry.
-- Add safe manual import/export path before external connectors.
-- Add provider-specific terms, scope, and platform limitation records.
+- Phase 3A complete: add the immutable, typed `connector-catalog.v1` capability registry.
+- Phase 3A complete: add safe, bounded manual `library-item.v1` import and existing JSON export before external connectors.
+- Phase 3A complete: record provider-specific status, terms review, scope, purpose, sensitivity, refresh, regional, and platform limitations.
+- Deferred: implement no live OAuth, periodic API, device collector, portability, health, monitoring, or scraping connector until its separate review gate is complete.
 
 ## Phase 4: Insights and Signals
 

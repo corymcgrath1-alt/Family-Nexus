@@ -30,6 +30,10 @@ tags:
     description: Shortlisted experiences
   - name: today
     description: Today dashboard summary
+  - name: connectors
+    description: Read-only connector capability catalog
+  - name: library
+    description: Family Library records and privacy-safe manual import
 
 paths:
   /healthz:
@@ -135,7 +139,16 @@ paths:
           in: query
           schema:
             type: string
-            enum: [right-now, this-week, this-weekend, this-month, this-season, this-year, surprise]
+            enum:
+              [
+                right-now,
+                this-week,
+                this-weekend,
+                this-month,
+                this-season,
+                this-year,
+                surprise,
+              ]
         - name: participants
           in: query
           schema:
@@ -313,7 +326,15 @@ paths:
           in: query
           schema:
             type: string
-            enum: [pending, accepted, suggested-change, needs-info, declined, cancelled]
+            enum:
+              [
+                pending,
+                accepted,
+                suggested-change,
+                needs-info,
+                declined,
+                cancelled,
+              ]
         - name: memberId
           in: query
           schema:
@@ -609,8 +630,733 @@ paths:
               schema:
                 $ref: "#/components/schemas/TodaySummary"
 
+  /connectors/catalog:
+    get:
+      operationId: listConnectorCatalog
+      tags: [connectors]
+      summary: List connector capabilities
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Deterministically ordered connector catalog
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorCatalogResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /connectors/catalog/{connectorId}:
+    get:
+      operationId: getConnectorCatalog
+      tags: [connectors]
+      summary: Get one connector capability
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: connectorId
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            maxLength: 80
+      responses:
+        "200":
+          description: Registered connector capability
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorCatalogDetailResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Connector not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /library/import/preview:
+    post:
+      operationId: previewLibraryImport
+      tags: [library]
+      summary: Preview a private Family Library JSON import
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LibraryItemImportDocument"
+      responses:
+        "200":
+          description: Sanitized import candidate with discard warnings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryImportPreview"
+        "400":
+          description: Malformed or unsupported import document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Adult account required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Import document exceeds the payload limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "415":
+          description: JSON content type required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /library/import:
+    post:
+      operationId: commitLibraryImport
+      tags: [library]
+      summary: Create a private Family Library copy from JSON
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LibraryImportCommitRequest"
+      responses:
+        "201":
+          description: Actor-owned private Library item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryItem"
+        "400":
+          description: Confirmation, format, connector, or payload validation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Adult account required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Import document exceeds the payload limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "415":
+          description: JSON content type required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: lh_sid
   schemas:
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: string
+        details:
+          type: array
+          items:
+            type: string
+
+    ConnectorStatus:
+      type: string
+      enum: [available, deferred, unsupported, prohibited]
+
+    ConnectorCollectionMode:
+      type: string
+      enum:
+        [
+          manual-upload,
+          live-oauth-api,
+          periodic-api,
+          user-authorized-platform-collector,
+          data-portability-export,
+          local-only,
+          unsupported,
+          prohibited,
+        ]
+
+    ConnectorDataCategory:
+      type: string
+      enum:
+        [
+          family-library-records,
+          documents,
+          household-records,
+          app-usage,
+          screen-time,
+          health-data,
+          google-portability-exports,
+          social-media-history,
+          device-telemetry,
+          device-or-app-behavior,
+        ]
+
+    ConnectorAllowedPurpose:
+      type: string
+      enum:
+        [
+          remember,
+          search,
+          user-directed-import,
+          user-directed-export,
+          personal-insight,
+          household-coordination,
+        ]
+
+    ConnectorTermsReviewStatus:
+      type: string
+      enum: [reviewed, review-required, unsupported, prohibited]
+
+    ConnectorSensitivityClass:
+      type: string
+      enum: [standard, personal, sensitive, restricted]
+
+    ConnectorDefinition:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          provider,
+          displayName,
+          description,
+          dataCategories,
+          collectionMode,
+          status,
+          requiredScopes,
+          authorizationRequirements,
+          allowedPurposes,
+          prohibitedUses,
+          sensitivity,
+          refreshLimitations,
+          regionalPlatformLimitations,
+          termsReviewStatus,
+          importSupport,
+          exportSupport,
+          unavailableReason,
+          canCollectAnotherAdultData,
+        ]
+      properties:
+        id:
+          type: string
+          pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          maxLength: 80
+        provider:
+          type: string
+        displayName:
+          type: string
+        description:
+          type: string
+        dataCategories:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConnectorDataCategory"
+        collectionMode:
+          $ref: "#/components/schemas/ConnectorCollectionMode"
+        status:
+          $ref: "#/components/schemas/ConnectorStatus"
+        requiredScopes:
+          type: array
+          items:
+            type: string
+        authorizationRequirements:
+          type: array
+          items:
+            type: string
+        allowedPurposes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConnectorAllowedPurpose"
+        prohibitedUses:
+          type: array
+          items:
+            type: string
+        sensitivity:
+          $ref: "#/components/schemas/ConnectorSensitivityClass"
+        refreshLimitations:
+          type: string
+        regionalPlatformLimitations:
+          type: array
+          items:
+            type: string
+        termsReviewStatus:
+          $ref: "#/components/schemas/ConnectorTermsReviewStatus"
+        importSupport:
+          type: boolean
+        exportSupport:
+          type: boolean
+        unavailableReason:
+          type: [string, "null"]
+        canCollectAnotherAdultData:
+          type: boolean
+          const: false
+
+    ConnectorCatalogResponse:
+      type: object
+      additionalProperties: false
+      required: [catalogVersion, connectors]
+      properties:
+        catalogVersion:
+          type: string
+          const: connector-catalog.v1
+        connectors:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConnectorDefinition"
+
+    ConnectorCatalogDetailResponse:
+      type: object
+      additionalProperties: false
+      required: [catalogVersion, connector]
+      properties:
+        catalogVersion:
+          type: string
+          const: connector-catalog.v1
+        connector:
+          $ref: "#/components/schemas/ConnectorDefinition"
+
+    LibraryItemCategory:
+      type: string
+      enum:
+        [
+          note,
+          document-reference,
+          instruction,
+          decision,
+          memory,
+          medical-reference,
+          household-record,
+          vehicle-record,
+          career-record,
+          other,
+        ]
+
+    LibraryItemSensitivity:
+      type: string
+      enum: [standard, personal, sensitive, restricted]
+
+    LibraryItemRetentionPolicy:
+      type: string
+      enum:
+        [keep-until-archived, review-annually, delete-after-date, legal-hold]
+
+    LibraryItemExportProvenance:
+      type: object
+      additionalProperties: false
+      properties:
+        sourceType:
+          type: string
+          maxLength: 80
+        sourceLabel:
+          type: [string, "null"]
+          maxLength: 260
+        note:
+          type: [string, "null"]
+          maxLength: 1000
+        recordedByUserId:
+          type: integer
+        correctedByUserId:
+          type: integer
+        correctedAt:
+          type: string
+          format: date-time
+        connectorId:
+          type: string
+        originalFormatVersion:
+          type: string
+        importedAt:
+          type: string
+          format: date-time
+        originalSourceLabel:
+          type: [string, "null"]
+          maxLength: 260
+
+    LibraryItemImportSource:
+      type: object
+      additionalProperties: false
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 160
+        category:
+          $ref: "#/components/schemas/LibraryItemCategory"
+        body:
+          type: [string, "null"]
+          maxLength: 12000
+        sourceLabel:
+          type: [string, "null"]
+          maxLength: 260
+        effectiveDate:
+          type: [string, "null"]
+          pattern: "^\\d{4}-\\d{2}-\\d{2}$"
+        sensitivity:
+          $ref: "#/components/schemas/LibraryItemSensitivity"
+        retentionPolicy:
+          $ref: "#/components/schemas/LibraryItemRetentionPolicy"
+        retentionDeleteAfter:
+          type: [string, "null"]
+          pattern: "^\\d{4}-\\d{2}-\\d{2}$"
+        provenance:
+          $ref: "#/components/schemas/LibraryItemExportProvenance"
+        id:
+          type: integer
+        householdId:
+          type: integer
+        ownerUserId:
+          type: integer
+        subjectUserId:
+          type: [integer, "null"]
+        ownerKind:
+          type: string
+        visibility:
+          type: string
+        sourceType:
+          type: string
+        allowedPurposes:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+        version:
+          type: integer
+        createdById:
+          type: integer
+        updatedById:
+          type: integer
+        archivedAt:
+          type: [string, "null"]
+          format: date-time
+        deletedAt:
+          type: [string, "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        grants:
+          type: array
+          maxItems: 100
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              id:
+                type: integer
+              granteeUserId:
+                type: integer
+              permission:
+                type: string
+              purpose:
+                type: string
+              createdAt:
+                type: string
+                format: date-time
+              revokedAt:
+                type: [string, "null"]
+                format: date-time
+              expiresAt:
+                type: [string, "null"]
+                format: date-time
+
+    LibraryItemImportDocument:
+      type: object
+      additionalProperties: false
+      required: [formatVersion, item]
+      properties:
+        connectorId:
+          type: string
+          default: manual-family-library
+          maxLength: 80
+        formatVersion:
+          type: string
+          const: library-item.v1
+        exportedAt:
+          type: string
+          format: date-time
+        item:
+          $ref: "#/components/schemas/LibraryItemImportSource"
+
+    LibraryImportCandidate:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          title,
+          category,
+          body,
+          sourceLabel,
+          effectiveDate,
+          sensitivity,
+          retentionPolicy,
+          retentionDeleteAfter,
+          provenanceNote,
+          visibility,
+          status,
+          sourceType,
+        ]
+      properties:
+        title:
+          type: string
+        category:
+          $ref: "#/components/schemas/LibraryItemCategory"
+        body:
+          type: [string, "null"]
+        sourceLabel:
+          type: [string, "null"]
+        effectiveDate:
+          type: [string, "null"]
+        sensitivity:
+          $ref: "#/components/schemas/LibraryItemSensitivity"
+        retentionPolicy:
+          $ref: "#/components/schemas/LibraryItemRetentionPolicy"
+        retentionDeleteAfter:
+          type: [string, "null"]
+        provenanceNote:
+          type: [string, "null"]
+        visibility:
+          type: string
+          const: private
+        status:
+          type: string
+          const: active
+        sourceType:
+          type: string
+          const: import
+
+    LibraryImportWarning:
+      type: object
+      additionalProperties: false
+      required: [code, message, fields]
+      properties:
+        code:
+          type: string
+          enum:
+            [
+              private-copy,
+              sharing-not-restored,
+              identifiers-not-preserved,
+              lifecycle-reset,
+              fields-not-imported,
+            ]
+        message:
+          type: string
+        fields:
+          type: array
+          items:
+            type: string
+
+    LibraryImportPreview:
+      type: object
+      additionalProperties: false
+      required: [formatVersion, connectorId, candidate, warnings]
+      properties:
+        formatVersion:
+          type: string
+          const: library-item.v1
+        connectorId:
+          type: string
+          const: manual-family-library
+        candidate:
+          $ref: "#/components/schemas/LibraryImportCandidate"
+        warnings:
+          type: array
+          items:
+            $ref: "#/components/schemas/LibraryImportWarning"
+
+    LibraryImportCommitRequest:
+      type: object
+      additionalProperties: false
+      required: [confirmPrivateCopy, document]
+      properties:
+        confirmPrivateCopy:
+          type: boolean
+          const: true
+        document:
+          $ref: "#/components/schemas/LibraryItemImportDocument"
+
+    LibraryItemGrant:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          granteeUserId,
+          permission,
+          purpose,
+          createdAt,
+          revokedAt,
+          expiresAt,
+        ]
+      properties:
+        id:
+          type: integer
+        granteeUserId:
+          type: integer
+        permission:
+          type: string
+        purpose:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        revokedAt:
+          type: [string, "null"]
+          format: date-time
+        expiresAt:
+          type: [string, "null"]
+          format: date-time
+
+    LibraryItem:
+      type: object
+      required:
+        [
+          id,
+          householdId,
+          ownerUserId,
+          subjectUserId,
+          ownerKind,
+          visibility,
+          category,
+          title,
+          body,
+          sourceType,
+          sourceLabel,
+          provenance,
+          effectiveDate,
+          sensitivity,
+          retentionPolicy,
+          retentionDeleteAfter,
+          allowedPurposes,
+          status,
+          version,
+          createdById,
+          updatedById,
+          archivedAt,
+          deletedAt,
+          createdAt,
+          updatedAt,
+          grants,
+        ]
+      properties:
+        id:
+          type: integer
+        householdId:
+          type: integer
+        ownerUserId:
+          type: integer
+        subjectUserId:
+          type: [integer, "null"]
+        ownerKind:
+          type: string
+        visibility:
+          type: string
+          enum: [private, shared, household]
+        category:
+          $ref: "#/components/schemas/LibraryItemCategory"
+        title:
+          type: string
+        body:
+          type: [string, "null"]
+        sourceType:
+          type: string
+        sourceLabel:
+          type: [string, "null"]
+        provenance:
+          type: object
+          additionalProperties: true
+        effectiveDate:
+          type: [string, "null"]
+        sensitivity:
+          $ref: "#/components/schemas/LibraryItemSensitivity"
+        retentionPolicy:
+          $ref: "#/components/schemas/LibraryItemRetentionPolicy"
+        retentionDeleteAfter:
+          type: [string, "null"]
+        allowedPurposes:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [active, archived, deleted]
+        version:
+          type: integer
+        createdById:
+          type: integer
+        updatedById:
+          type: integer
+        archivedAt:
+          type: [string, "null"]
+          format: date-time
+        deletedAt:
+          type: [string, "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        grants:
+          type: array
+          items:
+            $ref: "#/components/schemas/LibraryItemGrant"
+
     HealthStatus:
       type: object
       properties:
@@ -639,7 +1385,15 @@ components:
 
     ExperienceProfile:
       type: object
-      required: [memberId, interests, dislikes, crowdTolerance, activityLevel, updatedAt]
+      required:
+        [
+          memberId,
+          interests,
+          dislikes,
+          crowdTolerance,
+          activityLevel,
+          updatedAt,
+        ]
       properties:
         memberId:
           type: string
@@ -706,7 +1460,8 @@ components:
           type: string
         visibility:
           type: string
-          enum: [private, ai-only, share-summary, share-exact, surprise-ok, never]
+          enum:
+            [private, ai-only, share-summary, share-exact, surprise-ok, never]
 
     ExperienceProfileUpdate:
       type: object
@@ -765,7 +1520,26 @@ components:
 
     Experience:
       type: object
-      required: [id, title, description, imageUrl, participants, timeframes, durationMinutes, costEstimate, energyLevel, setting, planningEffort, isSaved, isHidden, isShortlisted, whyItFits, privacySafeSource, demoDataNote]
+      required:
+        [
+          id,
+          title,
+          description,
+          imageUrl,
+          participants,
+          timeframes,
+          durationMinutes,
+          costEstimate,
+          energyLevel,
+          setting,
+          planningEffort,
+          isSaved,
+          isHidden,
+          isShortlisted,
+          whyItFits,
+          privacySafeSource,
+          demoDataNote,
+        ]
       properties:
         id:
           type: string
@@ -787,7 +1561,16 @@ components:
           type: array
           items:
             type: string
-            enum: [right-now, this-week, this-weekend, this-month, this-season, this-year, surprise]
+            enum:
+              [
+                right-now,
+                this-week,
+                this-weekend,
+                this-month,
+                this-season,
+                this-year,
+                surprise,
+              ]
         durationMinutes:
           type: integer
         costEstimate:
@@ -909,7 +1692,16 @@ components:
 
     Invitation:
       type: object
-      required: [id, inviterId, inviteeIds, experienceId, status, detailLevel, createdAt]
+      required:
+        [
+          id,
+          inviterId,
+          inviteeIds,
+          experienceId,
+          status,
+          detailLevel,
+          createdAt,
+        ]
       properties:
         id:
           type: string
@@ -925,7 +1717,16 @@ components:
           type: string
         status:
           type: string
-          enum: [draft, pending, accepted, suggested-change, needs-info, declined, cancelled]
+          enum:
+            [
+              draft,
+              pending,
+              accepted,
+              suggested-change,
+              needs-info,
+              declined,
+              cancelled,
+            ]
         purpose:
           type: ["string", "null"]
         proposedDate:
@@ -1027,7 +1828,16 @@ components:
       properties:
         status:
           type: string
-          enum: [draft, pending, accepted, suggested-change, needs-info, declined, cancelled]
+          enum:
+            [
+              draft,
+              pending,
+              accepted,
+              suggested-change,
+              needs-info,
+              declined,
+              cancelled,
+            ]
         rsvpResponse:
           type: string
         rsvpNote:
@@ -1113,7 +1923,17 @@ components:
           type: ["string", "null"]
         category:
           type: string
-          enum: [childcare, reservation, tickets, transport, reminder, weather, backup, other]
+          enum:
+            [
+              childcare,
+              reservation,
+              tickets,
+              transport,
+              reminder,
+              weather,
+              backup,
+              other,
+            ]
         completed:
           type: boolean
         dueDate:
@@ -1318,7 +2138,15 @@ components:
 
     TodaySummary:
       type: object
-      required: [date, featuredExperience, upcomingCalendarEvent, pendingInvitation, urgentPlanningTask, quickActions]
+      required:
+        [
+          date,
+          featuredExperience,
+          upcomingCalendarEvent,
+          pendingInvitation,
+          urgentPlanningTask,
+          quickActions,
+        ]
       properties:
         date:
           type: string

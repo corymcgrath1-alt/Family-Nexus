@@ -22,6 +22,9 @@ import type {
 import type {
   CalendarEvent,
   CalendarEventInput,
+  ConnectorCatalogDetailResponse,
+  ConnectorCatalogResponse,
+  ErrorResponse,
   Experience,
   ExperienceActionInput,
   ExperienceProfile,
@@ -33,6 +36,10 @@ import type {
   Invitation,
   InvitationInput,
   InvitationUpdate,
+  LibraryImportCommitRequest,
+  LibraryImportPreview,
+  LibraryItem,
+  LibraryItemImportDocument,
   ListCalendarEventsParams,
   ListExperiencesParams,
   ListInvitationsParams,
@@ -2068,4 +2075,300 @@ export function useGetTodaySummary<TData = Awaited<ReturnType<typeof getTodaySum
 
 
 
+
+export const getListConnectorCatalogUrl = () => {
+
+
+
+
+  return `/api/connectors/catalog`
+}
+
+/**
+ * @summary List connector capabilities
+ */
+export const listConnectorCatalog = async ( options?: RequestInit): Promise<ConnectorCatalogResponse> => {
+
+  return customFetch<ConnectorCatalogResponse>(getListConnectorCatalogUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListConnectorCatalogQueryKey = () => {
+    return [
+    `/api/connectors/catalog`
+    ] as const;
+    }
+
+
+export const getListConnectorCatalogQueryOptions = <TData = Awaited<ReturnType<typeof listConnectorCatalog>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listConnectorCatalog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListConnectorCatalogQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listConnectorCatalog>>> = ({ signal }) => listConnectorCatalog({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listConnectorCatalog>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListConnectorCatalogQueryResult = NonNullable<Awaited<ReturnType<typeof listConnectorCatalog>>>
+export type ListConnectorCatalogQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List connector capabilities
+ */
+
+export function useListConnectorCatalog<TData = Awaited<ReturnType<typeof listConnectorCatalog>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listConnectorCatalog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListConnectorCatalogQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetConnectorCatalogUrl = (connectorId: string,) => {
+
+
+
+
+  return `/api/connectors/catalog/${connectorId}`
+}
+
+/**
+ * @summary Get one connector capability
+ */
+export const getConnectorCatalog = async (connectorId: string, options?: RequestInit): Promise<ConnectorCatalogDetailResponse> => {
+
+  return customFetch<ConnectorCatalogDetailResponse>(getGetConnectorCatalogUrl(connectorId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetConnectorCatalogQueryKey = (connectorId: string,) => {
+    return [
+    `/api/connectors/catalog/${connectorId}`
+    ] as const;
+    }
+
+
+export const getGetConnectorCatalogQueryOptions = <TData = Awaited<ReturnType<typeof getConnectorCatalog>>, TError = ErrorType<ErrorResponse>>(connectorId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getConnectorCatalog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetConnectorCatalogQueryKey(connectorId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getConnectorCatalog>>> = ({ signal }) => getConnectorCatalog(connectorId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: connectorId !== null && connectorId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getConnectorCatalog>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetConnectorCatalogQueryResult = NonNullable<Awaited<ReturnType<typeof getConnectorCatalog>>>
+export type GetConnectorCatalogQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get one connector capability
+ */
+
+export function useGetConnectorCatalog<TData = Awaited<ReturnType<typeof getConnectorCatalog>>, TError = ErrorType<ErrorResponse>>(
+ connectorId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getConnectorCatalog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetConnectorCatalogQueryOptions(connectorId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getPreviewLibraryImportUrl = () => {
+
+
+
+
+  return `/api/library/import/preview`
+}
+
+/**
+ * @summary Preview a private Family Library JSON import
+ */
+export const previewLibraryImport = async (libraryItemImportDocument: LibraryItemImportDocument, options?: RequestInit): Promise<LibraryImportPreview> => {
+
+  return customFetch<LibraryImportPreview>(getPreviewLibraryImportUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(libraryItemImportDocument)
+  }
+);}
+
+
+
+
+
+export const getPreviewLibraryImportMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewLibraryImport>>, TError,{data: BodyType<LibraryItemImportDocument>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof previewLibraryImport>>, TError,{data: BodyType<LibraryItemImportDocument>}, TContext> => {
+
+const mutationKey = ['previewLibraryImport'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof previewLibraryImport>>, {data: BodyType<LibraryItemImportDocument>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  previewLibraryImport(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PreviewLibraryImportMutationResult = NonNullable<Awaited<ReturnType<typeof previewLibraryImport>>>
+    export type PreviewLibraryImportMutationBody = BodyType<LibraryItemImportDocument>
+    export type PreviewLibraryImportMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Preview a private Family Library JSON import
+ */
+export const usePreviewLibraryImport = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewLibraryImport>>, TError,{data: BodyType<LibraryItemImportDocument>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof previewLibraryImport>>,
+        TError,
+        {data: BodyType<LibraryItemImportDocument>},
+        TContext
+      > => {
+      return useMutation(getPreviewLibraryImportMutationOptions(options));
+    }
+
+export const getCommitLibraryImportUrl = () => {
+
+
+
+
+  return `/api/library/import`
+}
+
+/**
+ * @summary Create a private Family Library copy from JSON
+ */
+export const commitLibraryImport = async (libraryImportCommitRequest: LibraryImportCommitRequest, options?: RequestInit): Promise<LibraryItem> => {
+
+  return customFetch<LibraryItem>(getCommitLibraryImportUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(libraryImportCommitRequest)
+  }
+);}
+
+
+
+
+
+export const getCommitLibraryImportMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof commitLibraryImport>>, TError,{data: BodyType<LibraryImportCommitRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof commitLibraryImport>>, TError,{data: BodyType<LibraryImportCommitRequest>}, TContext> => {
+
+const mutationKey = ['commitLibraryImport'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof commitLibraryImport>>, {data: BodyType<LibraryImportCommitRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  commitLibraryImport(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CommitLibraryImportMutationResult = NonNullable<Awaited<ReturnType<typeof commitLibraryImport>>>
+    export type CommitLibraryImportMutationBody = BodyType<LibraryImportCommitRequest>
+    export type CommitLibraryImportMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create a private Family Library copy from JSON
+ */
+export const useCommitLibraryImport = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof commitLibraryImport>>, TError,{data: BodyType<LibraryImportCommitRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof commitLibraryImport>>,
+        TError,
+        {data: BodyType<LibraryImportCommitRequest>},
+        TContext
+      > => {
+      return useMutation(getCommitLibraryImportMutationOptions(options));
+    }
 
