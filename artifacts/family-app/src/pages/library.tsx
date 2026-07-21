@@ -134,6 +134,7 @@ export default function LibraryPage() {
     if (grant.revokedAt) return false;
     return !grant.expiresAt || new Date(grant.expiresAt) > new Date();
   }) ?? [];
+  const selectedOwnerUserId = selected?.ownerUserId;
   const isOwner = !!selected && selected.ownerUserId === user?.id;
 
   const accessExplanation = useMemo(() => {
@@ -213,15 +214,21 @@ export default function LibraryPage() {
     const handleVisibilityChange = () => {
       if (!document.hidden) void verifySelectedAccess();
     };
+    const intervalId = selectedOwnerUserId && selectedOwnerUserId !== user?.id
+      ? window.setInterval(() => {
+          void verifySelectedAccess();
+        }, 2_000)
+      : null;
 
     window.addEventListener("focus", handleFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       cancelled = true;
+      if (intervalId) window.clearInterval(intervalId);
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [load, query, selectedId]);
+  }, [load, query, selectedId, selectedOwnerUserId, user?.id]);
 
   async function createItem(e: React.FormEvent) {
     e.preventDefault();

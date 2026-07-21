@@ -76,7 +76,7 @@ test("Family Library private, shared, household, and revoked access stay bounded
   await expect(page.getByText("No active sharing grants.")).toBeVisible();
 
   await pageB.bringToFront();
-  await expect(pageB.getByTestId("library-selected-detail")).not.toContainText(privateBody, { timeout: 10_000 });
+  await expect(pageB.getByText(privateBody)).toHaveCount(0, { timeout: 10_000 });
   await pageB.goto("/library");
   await pageB.getByLabel("Search Library").fill(privateTitle);
   await expect(pageB.getByText(privateTitle)).toHaveCount(0);
