@@ -4,11 +4,12 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
-const playwright = path.join(
+const playwrightCli = path.join(
   repoRoot,
   "node_modules",
-  ".bin",
-  process.platform === "win32" ? "playwright.cmd" : "playwright",
+  "@playwright",
+  "test",
+  "cli.js",
 );
 const migrationDatabaseUrl =
   process.env.TEST_DATABASE_MIGRATION_URL ??
@@ -39,7 +40,7 @@ try {
     TEST_DATABASE_MIGRATION_URL: migrationDatabaseUrl,
     TEST_DATABASE_URL: runtimeDatabaseUrl,
   });
-  await run(playwright, ["test"], {
+  await run(process.execPath, [playwrightCli, "test"], {
     DATABASE_URL: runtimeDatabaseUrl,
     TEST_DATABASE_MIGRATION_URL: migrationDatabaseUrl,
     TEST_DATABASE_URL: runtimeDatabaseUrl,

@@ -4,7 +4,15 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
-const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+const tsxCli = path.join(
+  repoRoot,
+  "artifacts",
+  "api-server",
+  "node_modules",
+  "tsx",
+  "dist",
+  "cli.mjs",
+);
 const migrationDatabaseUrl =
   process.env.TEST_DATABASE_MIGRATION_URL ??
   "postgres://lighthouse_test:lighthouse_test_password@127.0.0.1:55432/lighthouse_test";
@@ -35,17 +43,8 @@ try {
     TEST_DATABASE_URL: runtimeDatabaseUrl,
   });
   await run(
-    pnpm,
-    [
-      ...(process.platform === "win32"
-        ? ["--config.verify-deps-before-run=false"]
-        : []),
-      "--filter",
-      "@workspace/api-server",
-      "exec",
-      "tsx",
-      "src/lib/library-auth.integration.test.ts",
-    ],
+    process.execPath,
+    [tsxCli, "artifacts/api-server/src/lib/library-auth.integration.test.ts"],
     {
       DATABASE_URL: runtimeDatabaseUrl,
       TEST_DATABASE_MIGRATION_URL: migrationDatabaseUrl,
