@@ -28,6 +28,17 @@ This model covers the current Lighthouse web prototype and the planned consent-n
 - Data brokerage: no selling sensitive personal data; prohibit repurposing signals for consequential scoring.
 - Connector token leakage: encrypt tokens, least scopes, revocation, refresh limits, and provider-specific review before launch.
 - Prompt/log leakage: no raw intimate prompts in logs; model provider data-flow review before sending private content.
+- Graph traversal leakage: non-owner relationship reads require both endpoints to be currently readable; edges never grant endpoint access and traversal depth/results stay bounded.
+- Graph count and search inference: authorization is applied by PostgreSQL before text search, traversal, ranking, pagination, or aggregation; private rows cannot affect another actor's result surface.
+- Grant retargeting: graph grant identity, entity, grantee, permission, purpose, expiry, and creation scope are immutable; updates may only revoke an active grant.
+- Historical-content leakage: source-link evidence, entity/relationship versions, and graph audit history remain owner-only even when the current entity is shared.
+- Provider identifier confusion: provider source references are provenance/idempotency keys, never authorization tokens or canonical IDs.
+- Cross-adult assertions: graph subject IDs are null or self-owned in this milestone; relationship writes require ownership of both endpoints.
+- Connector schema confusion: unknown connector versions, entity types, relationship types, mappings, fields, and disconnected references fail strict validation.
+- Unbounded graph or payload denial of service: normalization batches, metadata keys, strings, tags, traversal depth, pages, and relationship counts are bounded.
+- Stale projections: PostgreSQL remains canonical; future search, graph, or vector projections must propagate revocation and deletion and enforce actor-equivalent filtering.
+- Confidence laundering: observations remain separate from verified facts, and confidence cannot be presented as diagnosis, certainty, eligibility, or a person score.
+- Passport enumeration: opaque Passport IDs do not authorize reads; Passport rows and person entities remain owner-private under RLS.
 
 ## Current Gaps
 
@@ -37,6 +48,8 @@ This model covers the current Lighthouse web prototype and the planned consent-n
 - No formal support-access tooling.
 - No broad deletion propagation implementation.
 - No real connector token store.
+- No graph API, graph search executor, semantic index, model runtime, or connector adapter.
+- No automated physical purge or downstream deletion propagation for graph projections.
 
 ## Reference Baselines
 

@@ -21,3 +21,16 @@
 ## Current App Constraints
 
 The current prototype does not provide end-to-end encryption, production identity assurance, or real external data connectors. It must not store banking credentials, identity documents, medical records, or production secrets until those controls are implemented and reviewed.
+
+## Knowledge Graph Handling
+
+Graph `privacyLevel` uses Internal, Household, Personal private, Sensitive personal, and Restricted third-party. `visibility` is a separate authorization projection: private, household, or explicitly shared. A classification never grants access by itself.
+
+- Household visibility requires Household classification.
+- Observations, insights, recommendations, and Passport person entities cannot be household-visible.
+- Cross-adult subject attribution is rejected in the current graph model.
+- Source records, external references, evidence notes, version snapshots, and graph audit history remain owner-only when an entity is shared.
+- Confidence and verification describe evidence state; they are not classifications or person scores.
+- Provider payloads and credentials do not belong in structured metadata, custom fields, audit metadata, search text, or logs.
+
+The registered health, finance, device, communication, identity, and third-party entity types are architecture capacity only. Collection and production storage remain unavailable until domain-specific controls are reviewed.

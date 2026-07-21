@@ -2,7 +2,7 @@
 
 ## Current Implementation Status
 
-Lighthouse is currently a modular monolith prototype: one Vite app, one Express API, shared TypeScript libraries, and PostgreSQL through Drizzle. The code has session authentication, household membership, relationship-support experiences, messages, planning tasks, memories, profiles, reflections, Family Library records, sharing grants, redacted Library audit events, and row-level security for the Lighthouse-owned privacy tables. It does not yet have production identity, application-wide row-level security for legacy tables, external connectors, encryption-at-rest controls, or full consent lifecycle automation.
+Lighthouse is currently a modular monolith prototype: one Vite app, one Express API, shared TypeScript libraries, and PostgreSQL through Drizzle. The code has session authentication, household membership, relationship-support experiences, messages, planning tasks, memories, profiles, reflections, Family Library records, sharing grants, redacted Library audit events, and row-level security for the Lighthouse-owned privacy tables. It also has a migration-managed Family Knowledge Graph, typed normalization and connector contracts, generalized versioned relationships, first-class Memory/Observation/Insight/Recommendation/Passport extensions, and actor-scoped graph RLS. It does not yet have graph product APIs, production identity, application-wide row-level security for legacy tables, external connectors, encryption-at-rest controls, or full consent lifecycle automation.
 
 ## Product Scope
 
@@ -94,6 +94,14 @@ Keep a modular monolith until load, isolation, deployment cadence, or team topol
 - Search authorization parity
 - Deletion/export paths
 - Redacted logs and traceable provenance
+
+## Family Knowledge Graph Boundary
+
+The graph is the canonical normalization destination for future reviewed imports and intelligence workflows. It is not a replacement for current domain tables. Adoption is incremental: a domain keeps its established API and policy until a documented service maps it into graph entities without changing ownership or lifecycle semantics.
+
+Global entity and relationship vocabularies are migration-managed. Provider-specific concepts live in connector definitions and mappings, so adding a provider does not require changing core graph tables. Private graph rows, sources, history, audit events, and Passport data are protected by transaction-scoped actor context and PostgreSQL RLS. Relationship visibility requires both endpoints; topology never grants access.
+
+See [knowledge-graph.md](./knowledge-graph.md) and the accompanying entity, relationship, timeline, Memory, Passport, connector, insight, and recommendation documents.
 
 ## Current Reference Baselines
 

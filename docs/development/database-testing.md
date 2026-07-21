@@ -26,6 +26,7 @@ pnpm run db:test:reset
 pnpm run db:test:down
 pnpm run test:integration
 pnpm run test:e2e
+pnpm run test:knowledge-model
 ```
 
 `db:test:up` starts a Docker container named `lighthouse-postgres-test` using
@@ -79,6 +80,21 @@ RLS-protected in this focused slice; their existing API authorization remains in
 place and they require a separate migration and policy review before conversion.
 Future tables receive no runtime privileges by default and must be granted
 deliberately in a reviewed migration.
+
+Migration `0003_family_knowledge_graph.sql` adds the graph tables described in
+`docs/architecture/knowledge-graph.md`. The restricted runtime role can read
+the immutable entity and relationship type registries but cannot mutate them.
+All actor-owned graph tables use fail-closed RLS. Entity sharing is
+record-specific; relationship reads require both endpoints; sources,
+source-link evidence, versions, graph audit events, and Passports remain
+owner-only. Typed extensions maintain owner-only snapshots in
+`knowledge_extension_versions`. Runtime roles cannot physically delete graph
+rows.
+
+`pnpm run test:knowledge-model` validates the shared registries, normalization
+bounds, connector mappings, Observation/Passport boundaries, and unified search
+contract. `pnpm run test:integration` now runs the established Library suite and
+the graph suite in separate processes with a clean migration before each.
 
 ## Migration Contract
 
@@ -144,6 +160,7 @@ pnpm install --frozen-lockfile
 pnpm run db:test:migrate
 pnpm run typecheck
 pnpm run test:library-policy
+pnpm run test:knowledge-model
 pnpm run test:integration
 pnpm run test:e2e
 pnpm --filter @workspace/api-server run build
