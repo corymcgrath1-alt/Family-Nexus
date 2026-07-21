@@ -8,7 +8,7 @@ import {
   sharingGrantsTable,
   usersTable,
 } from "@workspace/db";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth, withAuthenticatedDatabaseActor } from "../middleware/auth";
 import {
   canExportLibraryItem,
   canReadLibraryItem,
@@ -97,8 +97,8 @@ function badRequest(res: Response, error: unknown): void {
   res.status(400).json({ error: "Invalid request" });
 }
 
-function parseId(raw: string | undefined): number | null {
-  const id = Number(raw);
+function parseId(raw: string | string[] | undefined): number | null {
+  const id = Number(Array.isArray(raw) ? raw[0] : raw);
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
@@ -179,7 +179,7 @@ async function selectAdultRecipient(householdId: number, userId: number) {
   return recipient ?? null;
 }
 
-router.get("/library/items", async (req, res): Promise<void> => {
+router.get("/library/items", withAuthenticatedDatabaseActor(async (req, res): Promise<void> => {
   const actor = actorFromRequest(req);
   const query = String(req.query.q ?? "").trim().toLowerCase();
 
@@ -201,9 +201,9 @@ router.get("/library/items", async (req, res): Promise<void> => {
     : authorized;
 
   res.json(filtered.map((item) => fmtItemForActor(item, grantsForItem(grants, item.id), actor)));
-});
+}));
 
-router.get("/library/stats", async (req, res): Promise<void> => {
+router.get("/library/stats", withAuthenticatedDatabaseActor(async (req, res): Promise<void> => {
   const actor = actorFromRequest(req);
   const rows = await db
     .select()
@@ -228,9 +228,9 @@ router.get("/library/stats", async (req, res): Promise<void> => {
     byCategory,
     bySensitivity,
   });
-});
+}));
 
-router.post("/library/items", async (req, res): Promise<void> => {
+router.post("/library/items", withAuthenticatedDatabaseActor(async (req, res): Promise<void> => {
   const actor = actorFromRequest(req);
   if (actor.role !== "adult") {
     res.status(403).json({ error: "Only adult accounts can create library items" });
@@ -339,9 +339,9 @@ router.post("/library/items", async (req, res): Promise<void> => {
   });
 
   res.status(201).json(fmtItemForActor(result.item, result.grants, actor));
-});
+}));
 
-router.get("/library/items/:id", async (req, res): Promise<void> => {
+router.get("/library/items/:id", withAuthenticatedDatabaseActor(async (req, res): Promise<void> => {
   const actor = actorFromRequest(req);
   const id = parseId(req.params.id);
   if (!id) {
@@ -366,9 +366,9 @@ router.get("/library/items/:id", async (req, res): Promise<void> => {
   });
 
   res.json(fmtItemForActor(result.item, result.grants, actor));
-});
+}));
 
-router.patch("/library/items/:id", async (req, res): Promise<void> => {
+router.patch("/library/items/:id", withAuthenticatedDatabaseActor(async (req, res): Promise<void> => {
   const actor = actorFromRequest(req);
   const id = parseId(req.params.id);
   if (!id) {
@@ -434,9 +434,9 @@ router.patch("/library/items/:id", async (req, res): Promise<void> => {
   });
 
   res.json(fmtItemForActor(updated, result.grants, actor));
-});
+}));
 
-router.delete("/library/items/:id", async (req, res): Promise<void> => {
+router.delete("/library/items/:id", withAuthenticatedDatabaseActor(async (req, res): Promise<void> => {
   const actor = actorFromRequest(req);
   const id = parseId(req.params.id);
   if (!id) {
@@ -451,12 +451,6 @@ router.delete("/library/items/:id", async (req, res): Promise<void> => {
   }
 
   const now = new Date();
-  const [deleted] = await db
-    .update(libraryItemsTable)
-    .set({ status: "deleted", deletedAt: now, updatedAt: now, updatedById: actor.id, version: result.item.version + 1 })
-    .where(eq(libraryItemsTable.id, result.item.id))
-    .returning();
-
   await db
     .update(sharingGrantsTable)
     .set({ revokedAt: now, revokedById: actor.id })
@@ -466,16 +460,21 @@ router.delete("/library/items/:id", async (req, res): Promise<void> => {
     householdId: actor.householdId,
     actorUserId: actor.id,
     targetType: "library_item",
-    targetId: deleted.id,
+    targetId: result.item.id,
     eventType: "deleted",
     summary: "Library item deleted",
     metadata: { previousVisibility: result.item.visibility, sensitivity: result.item.sensitivity },
   });
 
-  res.status(204).send();
-});
+  await db
+    .update(libraryItemsTable)
+    .set({ status: "deleted", deletedAt: now, updatedAt: now, updatedById: actor.id, version: result.item.version + 1 })
+    .where(eq(libraryItemsTable.id, result.item.id));
 
-router.post("/library/items/:id/share", async (req, res): Promise<void> => {
+  res.status(204).send();
+}));
+
+router.post("/library/items/:id/share", withAuthenticatedDatabaseActor(async (req, res): Promise<void> => {
   const actor = actorFromRequest(req);
   const id = parseId(req.params.id);
   if (!id) {
@@ -542,9 +541,9 @@ router.post("/library/items/:id/share", async (req, res): Promise<void> => {
 
   const grants = await selectGrants([result.item.id]);
   res.json(fmtItemForActor(updated, grantsForItem(grants, result.item.id), actor));
-});
+}));
 
-router.post("/library/items/:id/revoke", async (req, res): Promise<void> => {
+router.post("/library/items/:id/revoke", withAuthenticatedDatabaseActor(async (req, res): Promise<void> => {
   const actor = actorFromRequest(req);
   const id = parseId(req.params.id);
   if (!id) {
@@ -605,9 +604,9 @@ router.post("/library/items/:id/revoke", async (req, res): Promise<void> => {
 
   const grants = await selectGrants([result.item.id]);
   res.json(fmtItemForActor(updated, grantsForItem(grants, result.item.id), actor));
-});
+}));
 
-router.get("/library/items/:id/audit", async (req, res): Promise<void> => {
+router.get("/library/items/:id/audit", withAuthenticatedDatabaseActor(async (req, res): Promise<void> => {
   const actor = actorFromRequest(req);
   const id = parseId(req.params.id);
   if (!id) {
@@ -636,9 +635,9 @@ router.get("/library/items/:id/audit", async (req, res): Promise<void> => {
     metadata: event.metadata as Record<string, unknown>,
     createdAt: event.createdAt.toISOString(),
   })));
-});
+}));
 
-router.get("/library/items/:id/export", async (req, res): Promise<void> => {
+router.get("/library/items/:id/export", withAuthenticatedDatabaseActor(async (req, res): Promise<void> => {
   const actor = actorFromRequest(req);
   const id = parseId(req.params.id);
   if (!id) {
@@ -667,6 +666,6 @@ router.get("/library/items/:id/export", async (req, res): Promise<void> => {
     formatVersion: "library-item.v1",
     item: fmtItemForActor(result.item, result.grants, actor),
   });
-});
+}));
 
 export default router;

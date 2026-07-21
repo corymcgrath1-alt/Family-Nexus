@@ -6,7 +6,7 @@ const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const databaseUrl =
   process.env.TEST_DATABASE_URL ??
   process.env.DATABASE_URL ??
-  "postgres://lighthouse_test:lighthouse_test_password@127.0.0.1:55432/lighthouse_test";
+  "postgres://lighthouse_test_app:lighthouse_test_app_password@127.0.0.1:55432/lighthouse_test";
 
 export default defineConfig({
   testDir: "./tests/e2e",

@@ -2,9 +2,17 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { after, before, test } from "node:test";
+import { eq } from "drizzle-orm";
 
-process.env.DATABASE_URL ??=
-  process.env.TEST_DATABASE_URL ?? "postgres://lighthouse_test:lighthouse_test_password@127.0.0.1:55432/lighthouse_test";
+const runtimeDatabaseUrl =
+  process.env.TEST_DATABASE_URL ??
+  process.env.DATABASE_URL ??
+  "postgres://lighthouse_test_app:lighthouse_test_app_password@127.0.0.1:55432/lighthouse_test";
+const migrationDatabaseUrl =
+  process.env.TEST_DATABASE_MIGRATION_URL ??
+  process.env.DATABASE_MIGRATION_URL ??
+  "postgres://lighthouse_test:lighthouse_test_password@127.0.0.1:55432/lighthouse_test";
+process.env.DATABASE_URL = runtimeDatabaseUrl;
 process.env.NODE_ENV = "test";
 process.env.SESSION_SECRET ??= "integration-test-session-secret";
 process.env.LOG_LEVEL ??= "silent";
@@ -13,6 +21,8 @@ const password = "CorrectHorseBattery1!";
 
 type DbModule = typeof import("@workspace/db");
 type BcryptModule = typeof import("bcryptjs");
+type DatabaseInstance = ReturnType<DbModule["createDatabase"]>;
+type DatabaseClient = DatabaseInstance["db"];
 type LibraryItemRow = DbModule["libraryItemsTable"]["$inferSelect"];
 type UserRow = DbModule["usersTable"]["$inferSelect"];
 
@@ -40,12 +50,15 @@ type TestClient = {
 let server: Server;
 let baseUrl = "";
 let dbModule: DbModule;
+let migrationDatabase: DatabaseInstance;
 let fixtures: FixtureState;
 
 before(async () => {
   dbModule = await import("@workspace/db");
-  await assertSchema(dbModule);
-  fixtures = await seedFixtures(dbModule, await import("bcryptjs"));
+  migrationDatabase = dbModule.createDatabase(migrationDatabaseUrl);
+  await assertSchema(dbModule, migrationDatabase);
+  fixtures = await seedFixtures(dbModule, migrationDatabase.db, await import("bcryptjs"));
+  await dbModule.assertRestrictedRuntimeDatabase();
 
   const { default: app } = await import("../app");
   server = createServer(app);
@@ -61,11 +74,162 @@ after(async () => {
   await new Promise<void>((resolve, reject) => {
     server.close((error) => (error ? reject(error) : resolve()));
   });
-  await dbModule.pool.end();
+  await Promise.all([dbModule.pool.end(), migrationDatabase.pool.end()]);
 });
 
 test("migration creates the schema constraints required by the privacy slice", async () => {
-  await assertSchema(dbModule);
+  await assertSchema(dbModule, migrationDatabase);
+});
+
+test("restricted runtime RLS fails closed and isolates person-owned rows", async () => {
+  await dbModule.assertRestrictedRuntimeDatabase();
+
+  const authority = await dbModule.pool.query<{
+    role_name: string;
+    is_superuser: boolean;
+    bypasses_rls: boolean;
+    is_runtime_member: boolean;
+  }>(
+    `select
+       current_user as role_name,
+       role_row.rolsuper as is_superuser,
+       role_row.rolbypassrls as bypasses_rls,
+       pg_has_role(current_user, 'lighthouse_runtime', 'member') as is_runtime_member
+     from pg_roles role_row
+     where role_row.rolname = current_user`,
+  );
+  assert.equal(authority.rows.length, 1);
+  assert.equal(authority.rows[0].is_superuser, false);
+  assert.equal(authority.rows[0].bypasses_rls, false);
+  assert.equal(authority.rows[0].is_runtime_member, true);
+
+  const protectedTables = [
+    "audit_events",
+    "consent_grants",
+    "data_records",
+    "data_sources",
+    "library_items",
+    "personal_vaults",
+    "shared_spaces",
+    "sharing_grants",
+    "signal_observations",
+  ];
+  for (const tableName of protectedTables) {
+    const rows = await dbModule.pool.query<{ count: number }>(`select count(*)::int as count from ${tableName}`);
+    assert.equal(rows.rows[0].count, 0, `${tableName} must return no rows without actor context`);
+  }
+
+  await assert.rejects(
+    dbModule.pool.query(
+      "insert into personal_vaults (household_id, owner_user_id) values ($1, $2)",
+      [fixtures.adultA.householdId, fixtures.adultA.id],
+    ),
+    isRowSecurityError,
+  );
+
+  await dbModule.withDatabaseActor(
+    { userId: fixtures.adultA.id, householdId: fixtures.adultA.householdId },
+    async () => {
+      const items = await dbModule.db.select().from(dbModule.libraryItemsTable);
+      assert(items.some((item) => item.id === fixtures.aPrivate.id));
+      assert(items.some((item) => item.id === fixtures.householdItem.id));
+      assert(!items.some((item) => item.id === fixtures.bPrivate.id));
+
+      assert.equal((await dbModule.db.select().from(dbModule.personalVaultsTable)).length, 1);
+      assert.equal((await dbModule.db.select().from(dbModule.dataSourcesTable)).length, 1);
+      assert.equal((await dbModule.db.select().from(dbModule.dataRecordsTable)).length, 1);
+      assert.equal((await dbModule.db.select().from(dbModule.consentGrantsTable)).length, 1);
+      assert.equal((await dbModule.db.select().from(dbModule.signalObservationsTable)).length, 1);
+    },
+  );
+
+  await dbModule.withDatabaseActor(
+    { userId: fixtures.adultB.id, householdId: fixtures.adultB.householdId },
+    async () => {
+      const items = await dbModule.db.select().from(dbModule.libraryItemsTable);
+      const itemIds = items.map((item) => item.id);
+      assert(itemIds.includes(fixtures.bPrivate.id));
+      assert(itemIds.includes(fixtures.aSharedFixture.id));
+      assert(itemIds.includes(fixtures.householdItem.id));
+      assert(!itemIds.includes(fixtures.aPrivate.id));
+      assert(!itemIds.includes(fixtures.expiredGrantItem.id));
+      assert(!itemIds.includes(fixtures.revokedGrantItem.id));
+      assert(!itemIds.includes(fixtures.malformedGrantItem.id));
+      assert(!itemIds.includes(fixtures.cGrantItem.id));
+
+      assert.equal((await dbModule.db.select().from(dbModule.personalVaultsTable)).length, 0);
+      assert.equal((await dbModule.db.select().from(dbModule.dataSourcesTable)).length, 0);
+      assert.equal((await dbModule.db.select().from(dbModule.dataRecordsTable)).length, 0);
+      assert.equal((await dbModule.db.select().from(dbModule.consentGrantsTable)).length, 0);
+      assert.equal((await dbModule.db.select().from(dbModule.signalObservationsTable)).length, 0);
+
+      const spaces = await dbModule.db.select().from(dbModule.sharedSpacesTable);
+      assert.deepEqual(spaces.map((space) => space.householdId), [fixtures.adultB.householdId]);
+      const deniedSpaceUpdate = await dbModule.db
+        .update(dbModule.sharedSpacesTable)
+        .set({ name: "unauthorized" })
+        .returning({ id: dbModule.sharedSpacesTable.id });
+      assert.deepEqual(deniedSpaceUpdate, []);
+
+      const grants = await dbModule.db.select().from(dbModule.sharingGrantsTable);
+      assert.deepEqual(grants.map((grant) => grant.resourceId), [fixtures.aSharedFixture.id]);
+
+      const auditEvents = await dbModule.db.select().from(dbModule.auditEventsTable);
+      assert(!auditEvents.some((event) => event.targetId === fixtures.aPrivate.id));
+      assert(!auditEvents.some((event) => event.targetId === fixtures.aSharedFixture.id));
+      assert(auditEvents.some((event) => event.targetId === fixtures.householdItem.id));
+
+      const deniedUpdate = await dbModule.db
+        .update(dbModule.libraryItemsTable)
+        .set({ body: "RLS_BYPASS_ATTEMPT" })
+        .where(eq(dbModule.libraryItemsTable.id, fixtures.aPrivate.id))
+        .returning({ id: dbModule.libraryItemsTable.id });
+      assert.deepEqual(deniedUpdate, []);
+    },
+  );
+
+  await assert.rejects(
+    dbModule.withDatabaseActor(
+      { userId: fixtures.adultB.id, householdId: fixtures.adultB.householdId },
+      () => dbModule.db.insert(dbModule.dataSourcesTable).values({
+        householdId: fixtures.adultA.householdId,
+        ownerUserId: fixtures.adultA.id,
+        provider: "unauthorized",
+        connectorMode: "manual",
+      }),
+    ),
+    isRowSecurityError,
+  );
+
+  await assert.rejects(
+    dbModule.withDatabaseActor(
+      { userId: fixtures.adultB.id, householdId: fixtures.adultB.householdId },
+      () => dbModule.db.insert(dbModule.sharingGrantsTable).values({
+        householdId: fixtures.adultB.householdId,
+        resourceType: "library_item",
+        resourceId: fixtures.aPrivate.id,
+        grantorUserId: fixtures.adultB.id,
+        granteeUserId: fixtures.adultC.id,
+        permission: "read",
+        purpose: "unauthorized_escalation",
+      }),
+    ),
+    isRowSecurityError,
+  );
+
+  const referenceRows = await dbModule.db.select().from(dbModule.signalDefinitionsTable);
+  assert.equal(referenceRows.length, 1);
+  await assert.rejects(
+    dbModule.db.insert(dbModule.signalDefinitionsTable).values({
+      name: "Unauthorized definition",
+      domain: "test",
+      unit: "count",
+      timeWindow: "point-in-time",
+      formulaVersion: "v1",
+      definition: "Runtime roles cannot mutate global definitions.",
+    }),
+    isRowSecurityError,
+  );
 });
 
 test("Adult B cannot infer Adult A private library records without an active read grant", async () => {
@@ -163,7 +327,7 @@ test("Adult B cannot infer Adult A private library records without an active rea
   await assertNoLeakFromListSearchOrStats(adultB, "A_PRIVATE_TITLE_ALPHA", "A_PRIVATE_CONTENT_ALPHA");
   await assertCanRead(adultA, fixtures.aPrivate, "A_PRIVATE_CONTENT_ALPHA");
 
-  const auditRows = await dbModule.pool.query(
+  const auditRows = await migrationDatabase.pool.query(
     "select summary, metadata::text as metadata from audit_events order by id",
   );
   for (const row of auditRows.rows as Array<{ summary: string; metadata: string }>) {
@@ -176,12 +340,13 @@ test("Adult B cannot infer Adult A private library records without an active rea
   }
 });
 
-async function assertSchema(dbm: DbModule) {
+async function assertSchema(dbm: DbModule, database: DatabaseInstance) {
   const expectedTables = [
     "session",
     "users",
     "households",
     "personal_vaults",
+    "shared_spaces",
     "data_sources",
     "data_records",
     "consent_grants",
@@ -191,7 +356,7 @@ async function assertSchema(dbm: DbModule) {
     "signal_observations",
     "library_items",
   ];
-  const tableRows = await dbm.pool.query(
+  const tableRows = await database.pool.query(
     "select table_name from information_schema.tables where table_schema = 'public' and table_name = any($1)",
     [expectedTables],
   );
@@ -200,7 +365,7 @@ async function assertSchema(dbm: DbModule) {
     [...expectedTables].sort(),
   );
 
-  const indexRows = await dbm.pool.query(
+  const indexRows = await database.pool.query(
     "select indexname from pg_indexes where schemaname = 'public' and indexname = any($1)",
     [
       [
@@ -214,7 +379,7 @@ async function assertSchema(dbm: DbModule) {
   );
   assert.equal(indexRows.rows.length, 5);
 
-  const nullability = await dbm.pool.query(
+  const nullability = await database.pool.query(
     `select table_name, column_name, is_nullable
      from information_schema.columns
      where table_schema = 'public'
@@ -238,7 +403,7 @@ async function assertSchema(dbm: DbModule) {
   assert.equal(nullabilityByColumn.get("audit_events.metadata"), "NO");
   assert.equal(nullabilityByColumn.get("session.sid"), "NO");
 
-  const foreignKeys = await dbm.pool.query(
+  const foreignKeys = await database.pool.query(
     `select count(*)::int as count
      from information_schema.table_constraints
      where table_schema = 'public'
@@ -247,14 +412,69 @@ async function assertSchema(dbm: DbModule) {
     [["library_items", "sharing_grants", "audit_events"]],
   );
   assert.equal(foreignKeys.rows[0].count, 0);
+
+  const protectedTables = [
+    "audit_events",
+    "consent_grants",
+    "data_records",
+    "data_sources",
+    "library_items",
+    "personal_vaults",
+    "shared_spaces",
+    "sharing_grants",
+    "signal_observations",
+  ];
+  const rlsRows = await database.pool.query(
+    `select table_row.relname as table_name, table_row.relrowsecurity as rls_enabled
+     from pg_class table_row
+     join pg_namespace schema_row on schema_row.oid = table_row.relnamespace
+     where schema_row.nspname = 'public'
+       and table_row.relname = any($1)`,
+    [protectedTables],
+  );
+  assert.deepEqual(
+    rlsRows.rows
+      .filter((row: { rls_enabled: boolean }) => row.rls_enabled)
+      .map((row: { table_name: string }) => row.table_name)
+      .sort(),
+    [...protectedTables].sort(),
+  );
+
+  const policyRows = await database.pool.query(
+    `select distinct tablename
+     from pg_policies
+     where schemaname = 'public' and tablename = any($1)`,
+    [protectedTables],
+  );
+  assert.deepEqual(
+    policyRows.rows.map((row: { tablename: string }) => row.tablename).sort(),
+    [...protectedTables].sort(),
+  );
+
+  const runtimeRole = await database.pool.query(
+    `select rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolbypassrls
+     from pg_roles
+     where rolname = 'lighthouse_runtime'`,
+  );
+  assert.deepEqual(runtimeRole.rows, [{
+    rolcanlogin: false,
+    rolsuper: false,
+    rolcreatedb: false,
+    rolcreaterole: false,
+    rolbypassrls: false,
+  }]);
 }
 
-async function seedFixtures(dbm: DbModule, bcryptModule: BcryptModule): Promise<FixtureState> {
+async function seedFixtures(
+  dbm: DbModule,
+  database: DatabaseClient,
+  bcryptModule: BcryptModule,
+): Promise<FixtureState> {
   const bcrypt = bcryptModule.default ?? bcryptModule;
   const passwordHash = await bcrypt.hash(password, 4);
 
-  const [household] = await dbm.db.insert(dbm.householdsTable).values({ name: "Privacy Test Household" }).returning();
-  const [otherHousehold] = await dbm.db.insert(dbm.householdsTable).values({ name: "Outsider Household" }).returning();
+  const [household] = await database.insert(dbm.householdsTable).values({ name: "Privacy Test Household" }).returning();
+  const [otherHousehold] = await database.insert(dbm.householdsTable).values({ name: "Outsider Household" }).returning();
 
   async function createUser(input: {
     householdId: number;
@@ -262,7 +482,7 @@ async function seedFixtures(dbm: DbModule, bcryptModule: BcryptModule): Promise<
     email: string;
     color: string;
   }) {
-    const [user] = await dbm.db
+    const [user] = await database
       .insert(dbm.usersTable)
       .values({
         householdId: input.householdId,
@@ -307,12 +527,17 @@ async function seedFixtures(dbm: DbModule, bcryptModule: BcryptModule): Promise<
     color: "#8B5E3C",
   });
 
-  await dbm.db.insert(dbm.personalVaultsTable).values({
+  await database.insert(dbm.sharedSpacesTable).values([
+    { householdId: household.id, name: "Privacy Test Household Space", createdById: adultA.id },
+    { householdId: otherHousehold.id, name: "Outsider Household Space", createdById: outsider.id },
+  ]);
+
+  await database.insert(dbm.personalVaultsTable).values({
     householdId: household.id,
     ownerUserId: adultA.id,
     lighthousePassportId: adultA.lighthousePassportId,
   });
-  const [source] = await dbm.db
+  const [source] = await database
     .insert(dbm.dataSourcesTable)
     .values({
       householdId: household.id,
@@ -324,7 +549,7 @@ async function seedFixtures(dbm: DbModule, bcryptModule: BcryptModule): Promise<
       allowedPurposes: ["remember"],
     })
     .returning();
-  await dbm.db.insert(dbm.dataRecordsTable).values({
+  await database.insert(dbm.dataRecordsTable).values({
     householdId: household.id,
     ownerUserId: adultA.id,
     subjectUserId: adultA.id,
@@ -333,7 +558,7 @@ async function seedFixtures(dbm: DbModule, bcryptModule: BcryptModule): Promise<
     provenance: { fixture: true },
     allowedPurposes: ["remember"],
   });
-  await dbm.db.insert(dbm.consentGrantsTable).values({
+  await database.insert(dbm.consentGrantsTable).values({
     householdId: household.id,
     ownerUserId: adultA.id,
     subjectUserId: adultA.id,
@@ -343,7 +568,7 @@ async function seedFixtures(dbm: DbModule, bcryptModule: BcryptModule): Promise<
     allowedUse: "read",
     prohibitedUses: ["reshare", "train_model"],
   });
-  const [signal] = await dbm.db
+  const [signal] = await database
     .insert(dbm.signalDefinitionsTable)
     .values({
       name: "Fixture signal",
@@ -354,7 +579,7 @@ async function seedFixtures(dbm: DbModule, bcryptModule: BcryptModule): Promise<
       definition: "Synthetic fixture signal for privacy integration tests.",
     })
     .returning();
-  await dbm.db.insert(dbm.signalObservationsTable).values({
+  await database.insert(dbm.signalObservationsTable).values({
     householdId: household.id,
     ownerUserId: adultA.id,
     subjectUserId: adultA.id,
@@ -365,22 +590,22 @@ async function seedFixtures(dbm: DbModule, bcryptModule: BcryptModule): Promise<
     visibility: "private",
   });
 
-  const aPrivate = await createItem(dbm, adultA, {
+  const aPrivate = await createItem(dbm, database, adultA, {
     title: "A_PRIVATE_TITLE_ALPHA",
     body: "A_PRIVATE_CONTENT_ALPHA",
   });
-  const bPrivate = await createItem(dbm, adultB, {
+  const bPrivate = await createItem(dbm, database, adultB, {
     title: "B_PRIVATE_TITLE_BRAVO",
     body: "B_PRIVATE_CONTENT_BRAVO",
   });
-  const aSharedFixture = await createItem(dbm, adultA, {
+  const aSharedFixture = await createItem(dbm, database, adultA, {
     title: "A_SHARED_FIXTURE_TITLE",
     body: "A_SHARED_FIXTURE_CONTENT",
     visibility: "shared",
   });
-  await createGrant(dbm, household.id, adultA.id, adultB.id, aSharedFixture.id, "read");
+  await createGrant(dbm, database, household.id, adultA.id, adultB.id, aSharedFixture.id, "read");
 
-  const householdItem = await createItem(dbm, adultA, {
+  const householdItem = await createItem(dbm, database, adultA, {
     title: "HOUSEHOLD_TITLE_DELTA",
     body: "HOUSEHOLD_CONTENT_DELTA",
     visibility: "household",
@@ -388,44 +613,44 @@ async function seedFixtures(dbm: DbModule, bcryptModule: BcryptModule): Promise<
     subjectUserId: null,
   });
 
-  const expiredGrantItem = await createItem(dbm, adultA, {
+  const expiredGrantItem = await createItem(dbm, database, adultA, {
     title: "A_EXPIRED_GRANT_TITLE",
     body: "A_EXPIRED_GRANT_CONTENT",
     visibility: "shared",
   });
-  await createGrant(dbm, household.id, adultA.id, adultB.id, expiredGrantItem.id, "read", {
+  await createGrant(dbm, database, household.id, adultA.id, adultB.id, expiredGrantItem.id, "read", {
     expiresAt: new Date(Date.now() - 60_000),
   });
 
-  const revokedGrantItem = await createItem(dbm, adultA, {
+  const revokedGrantItem = await createItem(dbm, database, adultA, {
     title: "A_REVOKED_GRANT_TITLE",
     body: "A_REVOKED_GRANT_CONTENT",
     visibility: "shared",
   });
-  await createGrant(dbm, household.id, adultA.id, adultB.id, revokedGrantItem.id, "read", {
+  await createGrant(dbm, database, household.id, adultA.id, adultB.id, revokedGrantItem.id, "read", {
     revokedAt: new Date(),
     revokedById: adultA.id,
   });
 
-  const malformedGrantItem = await createItem(dbm, adultA, {
+  const malformedGrantItem = await createItem(dbm, database, adultA, {
     title: "A_MALFORMED_GRANT_TITLE",
     body: "A_MALFORMED_GRANT_CONTENT",
     visibility: "shared",
   });
-  await createGrant(dbm, household.id, adultA.id, adultB.id, malformedGrantItem.id, "comment");
+  await createGrant(dbm, database, household.id, adultA.id, adultB.id, malformedGrantItem.id, "comment");
 
-  const cGrantItem = await createItem(dbm, adultA, {
+  const cGrantItem = await createItem(dbm, database, adultA, {
     title: "A_C_ONLY_GRANT_TITLE",
     body: "A_C_ONLY_GRANT_CONTENT",
     visibility: "shared",
   });
-  await createGrant(dbm, household.id, adultA.id, adultC.id, cGrantItem.id, "read");
+  await createGrant(dbm, database, household.id, adultA.id, adultC.id, cGrantItem.id, "read");
 
-  const archivableItem = await createItem(dbm, adultA, {
+  const archivableItem = await createItem(dbm, database, adultA, {
     title: "A_ARCHIVABLE_TITLE",
     body: "A_ARCHIVABLE_CONTENT",
   });
-  const deletableItem = await createItem(dbm, adultA, {
+  const deletableItem = await createItem(dbm, database, adultA, {
     title: "A_DELETABLE_TITLE",
     body: "A_DELETABLE_CONTENT",
   });
@@ -450,6 +675,7 @@ async function seedFixtures(dbm: DbModule, bcryptModule: BcryptModule): Promise<
 
 async function createItem(
   dbm: DbModule,
+  database: DatabaseClient,
   owner: UserRow,
   input: {
     title: string;
@@ -460,7 +686,7 @@ async function createItem(
   },
 ) {
   const visibility = input.visibility ?? "private";
-  const [item] = await dbm.db
+  const [item] = await database
     .insert(dbm.libraryItemsTable)
     .values({
       householdId: owner.householdId,
@@ -481,7 +707,7 @@ async function createItem(
     })
     .returning();
 
-  await dbm.db.insert(dbm.auditEventsTable).values({
+  await database.insert(dbm.auditEventsTable).values({
     householdId: owner.householdId,
     actorUserId: owner.id,
     targetType: "library_item",
@@ -496,6 +722,7 @@ async function createItem(
 
 async function createGrant(
   dbm: DbModule,
+  database: DatabaseClient,
   householdId: number,
   grantorUserId: number,
   granteeUserId: number,
@@ -503,7 +730,7 @@ async function createGrant(
   permission: string,
   overrides: Partial<DbModule["sharingGrantsTable"]["$inferInsert"]> = {},
 ) {
-  const [grant] = await dbm.db
+  const [grant] = await database
     .insert(dbm.sharingGrantsTable)
     .values({
       householdId,
@@ -653,4 +880,10 @@ function assertNoTokens(value: unknown, tokens: string[]) {
 
 function assertIncludesToken(value: unknown, token: string) {
   assert(JSON.stringify(value).includes(token), `Expected response to include token ${token}`);
+}
+
+function isRowSecurityError(error: unknown): boolean {
+  assert(error && typeof error === "object" && "code" in error);
+  assert.equal((error as { code: string }).code, "42501");
+  return true;
 }

@@ -6,17 +6,36 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
 
-const containerName = process.env.TEST_POSTGRES_CONTAINER ?? "lighthouse-postgres-test";
+const containerName =
+  process.env.TEST_POSTGRES_CONTAINER ?? "lighthouse-postgres-test";
 const image = process.env.TEST_POSTGRES_IMAGE ?? "postgres:16-alpine";
 const testUser = process.env.TEST_POSTGRES_USER ?? "lighthouse_test";
-const testPassword = process.env.TEST_POSTGRES_PASSWORD ?? "lighthouse_test_password";
+const testPassword =
+  process.env.TEST_POSTGRES_PASSWORD ?? "lighthouse_test_password";
+const runtimeUser =
+  process.env.TEST_POSTGRES_RUNTIME_USER ?? "lighthouse_test_app";
+const runtimePassword =
+  process.env.TEST_POSTGRES_RUNTIME_PASSWORD ?? "lighthouse_test_app_password";
 const testDatabase = process.env.TEST_POSTGRES_DB ?? "lighthouse_test";
 const testHost = process.env.TEST_POSTGRES_HOST ?? "127.0.0.1";
 const testPort = process.env.TEST_POSTGRES_PORT ?? "55432";
-const defaultUrl = `postgres://${testUser}:${testPassword}@${testHost}:${testPort}/${testDatabase}`;
+const defaultMigrationUrl = `postgres://${testUser}:${testPassword}@${testHost}:${testPort}/${testDatabase}`;
+const defaultRuntimeUrl = `postgres://${runtimeUser}:${runtimePassword}@${testHost}:${testPort}/${testDatabase}`;
 
-function databaseUrl() {
-  return process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL ?? defaultUrl;
+function migrationDatabaseUrl() {
+  return (
+    process.env.TEST_DATABASE_MIGRATION_URL ??
+    process.env.DATABASE_MIGRATION_URL ??
+    defaultMigrationUrl
+  );
+}
+
+function runtimeDatabaseUrl() {
+  return (
+    process.env.TEST_DATABASE_URL ??
+    process.env.DATABASE_URL ??
+    defaultRuntimeUrl
+  );
 }
 
 function run(command, args, options = {}) {
@@ -24,7 +43,10 @@ function run(command, args, options = {}) {
     const child = spawn(command, args, {
       cwd: repoRoot,
       env: { ...process.env, ...options.env },
-      stdio: options.input === undefined ? "inherit" : ["pipe", "inherit", "inherit"],
+      stdio:
+        options.input === undefined
+          ? "inherit"
+          : ["pipe", "inherit", "inherit"],
       shell: false,
     });
 
@@ -56,18 +78,19 @@ async function runQuiet(command, args) {
   });
 }
 
-function assertTestDatabaseUrl(rawUrl) {
+function assertTestDatabaseUrl(rawUrl, variableName) {
   if (process.env.ALLOW_NON_TEST_DATABASE === "true") return;
 
   const parsed = new URL(rawUrl);
   const databaseName = parsed.pathname.replace(/^\//, "");
-  const localHost = parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost";
+  const localHost =
+    parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost";
 
   if (!localHost || !/test/i.test(databaseName)) {
     throw new Error(
       [
         "Refusing to reset or migrate a non-test database.",
-        `DATABASE_URL/TEST_DATABASE_URL resolved to ${parsed.hostname}/${databaseName}.`,
+        `${variableName} resolved to ${parsed.hostname}/${databaseName}.`,
         "Use a local database whose name contains 'test', or set ALLOW_NON_TEST_DATABASE=true intentionally.",
       ].join(" "),
     );
@@ -106,10 +129,17 @@ async function waitForPostgres() {
 }
 
 async function up() {
-  const running = await runQuiet("docker", ["inspect", "-f", "{{.State.Running}}", containerName]);
+  const running = await runQuiet("docker", [
+    "inspect",
+    "-f",
+    "{{.State.Running}}",
+    containerName,
+  ]);
   if (running) {
     await waitForPostgres();
-    console.log(`Test PostgreSQL is already running at ${defaultUrl}`);
+    console.log(
+      `Test PostgreSQL is already running on ${testHost}:${testPort}/${testDatabase}.`,
+    );
     return;
   }
 
@@ -135,7 +165,9 @@ async function up() {
   }
 
   await waitForPostgres();
-  console.log(`Test PostgreSQL is ready at ${defaultUrl}`);
+  console.log(
+    `Test PostgreSQL is ready on ${testHost}:${testPort}/${testDatabase}.`,
+  );
 }
 
 async function down() {
@@ -143,22 +175,42 @@ async function down() {
   console.log(`Removed ${containerName}.`);
 }
 
-async function psql(rawUrl, sql) {
+async function psql(rawUrl, sql, variables = {}) {
+  const variableArgs = Object.entries(variables).flatMap(([name, value]) => [
+    "-v",
+    `${name}=${value}`,
+  ]);
   if (usesDefaultDockerDatabase(rawUrl)) {
     await run(
       "docker",
-      ["exec", "-i", containerName, "psql", "-v", "ON_ERROR_STOP=1", "-U", testUser, "-d", testDatabase],
+      [
+        "exec",
+        "-i",
+        containerName,
+        "psql",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-U",
+        testUser,
+        "-d",
+        testDatabase,
+        ...variableArgs,
+      ],
       { input: sql },
     );
     return;
   }
 
-  await run("psql", [rawUrl, "-v", "ON_ERROR_STOP=1"], { input: sql });
+  await run("psql", [rawUrl, "-v", "ON_ERROR_STOP=1", ...variableArgs], {
+    input: sql,
+  });
 }
 
 async function applySqlMigrations(rawUrl) {
   const migrationsDir = path.join(repoRoot, "lib", "db", "migrations");
-  const files = (await readdir(migrationsDir)).filter((file) => file.endsWith(".sql")).sort();
+  const files = (await readdir(migrationsDir))
+    .filter((file) => file.endsWith(".sql"))
+    .sort();
 
   for (const file of files) {
     const sql = await readFile(path.join(migrationsDir, file), "utf8");
@@ -167,23 +219,94 @@ async function applySqlMigrations(rawUrl) {
   }
 }
 
+async function ensureRuntimeLogin(migrationUrl, runtimeUrl) {
+  const migration = new URL(migrationUrl);
+  const runtime = new URL(runtimeUrl);
+  const migrationDatabase = migration.pathname.replace(/^\//, "");
+  const runtimeDatabase = runtime.pathname.replace(/^\//, "");
+  const normalizeHost = (hostname) =>
+    hostname === "localhost" || hostname === "127.0.0.1"
+      ? "localhost"
+      : hostname;
+
+  assertTestDatabaseUrl(runtimeUrl, "TEST_DATABASE_URL/DATABASE_URL");
+  if (
+    normalizeHost(migration.hostname) !== normalizeHost(runtime.hostname) ||
+    (migration.port || "5432") !== (runtime.port || "5432") ||
+    migrationDatabase !== runtimeDatabase
+  ) {
+    throw new Error(
+      "Migration and runtime URLs must target the same isolated test database.",
+    );
+  }
+  if (migration.username === runtime.username) {
+    throw new Error(
+      "The test runtime database role must differ from the migration role.",
+    );
+  }
+  if (!/^[A-Za-z_][A-Za-z0-9_$]*$/.test(runtime.username)) {
+    throw new Error(
+      "The test runtime database role must be a valid PostgreSQL identifier.",
+    );
+  }
+  if (!runtime.password) {
+    throw new Error("The test runtime database URL must include a password.");
+  }
+
+  const sql = String.raw`
+SELECT format(
+  'CREATE ROLE %I LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD %L',
+  :'runtime_role',
+  :'runtime_password'
+)
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'runtime_role')
+\gexec
+
+SELECT format(
+  'ALTER ROLE %I WITH LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD %L',
+  :'runtime_role',
+  :'runtime_password'
+)
+\gexec
+
+SELECT format('GRANT lighthouse_runtime TO %I', :'runtime_role')
+\gexec
+`;
+
+  await psql(migrationUrl, sql, {
+    runtime_role: runtime.username,
+    runtime_password: runtime.password,
+  });
+}
+
 async function migrate() {
-  const rawUrl = databaseUrl();
-  assertTestDatabaseUrl(rawUrl);
-  if (usesDefaultDockerDatabase(rawUrl)) {
+  const migrationUrl = migrationDatabaseUrl();
+  const runtimeUrl = runtimeDatabaseUrl();
+  assertTestDatabaseUrl(
+    migrationUrl,
+    "TEST_DATABASE_MIGRATION_URL/DATABASE_MIGRATION_URL",
+  );
+  if (usesDefaultDockerDatabase(migrationUrl)) {
     await up();
   }
-  await applySqlMigrations(rawUrl);
-  console.log("Test database schema is migrated from SQL migrations.");
+  await applySqlMigrations(migrationUrl);
+  await ensureRuntimeLogin(migrationUrl, runtimeUrl);
+  console.log("Test database schema and restricted runtime role are ready.");
 }
 
 async function reset() {
-  const rawUrl = databaseUrl();
-  assertTestDatabaseUrl(rawUrl);
-  if (usesDefaultDockerDatabase(rawUrl)) {
+  const migrationUrl = migrationDatabaseUrl();
+  assertTestDatabaseUrl(
+    migrationUrl,
+    "TEST_DATABASE_MIGRATION_URL/DATABASE_MIGRATION_URL",
+  );
+  if (usesDefaultDockerDatabase(migrationUrl)) {
     await up();
   }
-  await psql(rawUrl, "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;");
+  await psql(
+    migrationUrl,
+    "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;",
+  );
   await migrate();
 }
 
@@ -194,9 +317,12 @@ try {
   else if (command === "down") await down();
   else if (command === "migrate") await migrate();
   else if (command === "reset") await reset();
-  else if (command === "url") console.log(databaseUrl());
+  else if (command === "url") console.log(runtimeDatabaseUrl());
+  else if (command === "migration-url") console.log(migrationDatabaseUrl());
   else {
-    console.error("Usage: node scripts/db-test.mjs <up|migrate|reset|down|url>");
+    console.error(
+      "Usage: node scripts/db-test.mjs <up|migrate|reset|down|url|migration-url>",
+    );
     process.exitCode = 1;
   }
 } catch (error) {

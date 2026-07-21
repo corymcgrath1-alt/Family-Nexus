@@ -2,7 +2,7 @@
 
 ## Current Implementation Status
 
-Lighthouse is currently a modular monolith prototype: one Vite app, one Express API, shared TypeScript libraries, and PostgreSQL through Drizzle. The code has session authentication, household membership, relationship-support experiences, messages, planning tasks, memories, profiles, reflections, Family Library records, sharing grants, and redacted Library audit events. It does not yet have production identity, row-level security, external connectors, encryption-at-rest controls, or full consent lifecycle automation.
+Lighthouse is currently a modular monolith prototype: one Vite app, one Express API, shared TypeScript libraries, and PostgreSQL through Drizzle. The code has session authentication, household membership, relationship-support experiences, messages, planning tasks, memories, profiles, reflections, Family Library records, sharing grants, redacted Library audit events, and row-level security for the Lighthouse-owned privacy tables. It does not yet have production identity, application-wide row-level security for legacy tables, external connectors, encryption-at-rest controls, or full consent lifecycle automation.
 
 ## Product Scope
 

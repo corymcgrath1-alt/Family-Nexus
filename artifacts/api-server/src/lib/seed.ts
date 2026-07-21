@@ -11,6 +11,7 @@ import {
   planningTasksTable,
   sharingGrantsTable,
   usersTable,
+  withDatabaseActor,
 } from "@workspace/db";
 import { DEFAULT_PROFILES } from "./mock-family";
 import { nanoid } from "nanoid";
@@ -252,7 +253,7 @@ export async function checkAndSeed(): Promise<void> {
   }
 
   // 8. Demo Family Library items
-  const [alexPrivate] = await db.insert(libraryItemsTable).values({
+  const [alexPrivate] = await withDatabaseActor({ userId: alex.id, householdId: hhId }, () => db.insert(libraryItemsTable).values({
     householdId: hhId,
     ownerUserId: alex.id,
     subjectUserId: alex.id,
@@ -268,9 +269,9 @@ export async function checkAndSeed(): Promise<void> {
     retentionPolicy: "review-annually",
     createdById: alex.id,
     updatedById: alex.id,
-  }).returning();
+  }).returning());
 
-  const [morganPrivate] = await db.insert(libraryItemsTable).values({
+  const [morganPrivate] = await withDatabaseActor({ userId: morgan.id, householdId: hhId }, () => db.insert(libraryItemsTable).values({
     householdId: hhId,
     ownerUserId: morgan.id,
     subjectUserId: morgan.id,
@@ -286,9 +287,9 @@ export async function checkAndSeed(): Promise<void> {
     retentionPolicy: "review-annually",
     createdById: morgan.id,
     updatedById: morgan.id,
-  }).returning();
+  }).returning());
 
-  const [householdLibraryItem] = await db.insert(libraryItemsTable).values({
+  const [householdLibraryItem] = await withDatabaseActor({ userId: alex.id, householdId: hhId }, () => db.insert(libraryItemsTable).values({
     householdId: hhId,
     ownerUserId: alex.id,
     ownerKind: "household",
@@ -303,9 +304,9 @@ export async function checkAndSeed(): Promise<void> {
     retentionPolicy: "keep-until-archived",
     createdById: alex.id,
     updatedById: alex.id,
-  }).returning();
+  }).returning());
 
-  const [sharedLibraryItem] = await db.insert(libraryItemsTable).values({
+  const [sharedLibraryItem] = await withDatabaseActor({ userId: alex.id, householdId: hhId }, () => db.insert(libraryItemsTable).values({
     householdId: hhId,
     ownerUserId: alex.id,
     subjectUserId: alex.id,
@@ -321,9 +322,9 @@ export async function checkAndSeed(): Promise<void> {
     retentionPolicy: "review-annually",
     createdById: alex.id,
     updatedById: alex.id,
-  }).returning();
+  }).returning());
 
-  const [grant] = await db.insert(sharingGrantsTable).values({
+  const [grant] = await withDatabaseActor({ userId: alex.id, householdId: hhId }, () => db.insert(sharingGrantsTable).values({
     householdId: hhId,
     resourceType: "library_item",
     resourceId: sharedLibraryItem.id,
@@ -331,9 +332,19 @@ export async function checkAndSeed(): Promise<void> {
     granteeUserId: morgan.id,
     permission: "read",
     purpose: "library_share",
-  }).returning();
+  }).returning());
 
-  await db.insert(auditEventsTable).values([
+  await withDatabaseActor({ userId: morgan.id, householdId: hhId }, () => db.insert(auditEventsTable).values({
+    householdId: hhId,
+    actorUserId: morgan.id,
+    targetType: "library_item",
+    targetId: morganPrivate.id,
+    eventType: "created",
+    summary: "Library item created",
+    metadata: { category: morganPrivate.category, visibility: morganPrivate.visibility, sensitivity: morganPrivate.sensitivity },
+  }));
+
+  await withDatabaseActor({ userId: alex.id, householdId: hhId }, () => db.insert(auditEventsTable).values([
     {
       householdId: hhId,
       actorUserId: alex.id,
@@ -342,15 +353,6 @@ export async function checkAndSeed(): Promise<void> {
       eventType: "created",
       summary: "Library item created",
       metadata: { category: alexPrivate.category, visibility: alexPrivate.visibility, sensitivity: alexPrivate.sensitivity },
-    },
-    {
-      householdId: hhId,
-      actorUserId: morgan.id,
-      targetType: "library_item",
-      targetId: morganPrivate.id,
-      eventType: "created",
-      summary: "Library item created",
-      metadata: { category: morganPrivate.category, visibility: morganPrivate.visibility, sensitivity: morganPrivate.sensitivity },
     },
     {
       householdId: hhId,
@@ -379,7 +381,7 @@ export async function checkAndSeed(): Promise<void> {
       summary: "Library item shared",
       metadata: { grantId: grant.id, sharedRecipientCount: 1 },
     },
-  ]);
+  ]));
 
   console.log(`[seed] Done. Household id=${hhId}, Alex id=${alex.id}, Morgan id=${morgan.id}`);
 }
