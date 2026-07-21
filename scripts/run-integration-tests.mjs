@@ -38,21 +38,24 @@ function run(command, args, env = {}) {
 }
 
 try {
-  await run(process.execPath, ["scripts/db-test.mjs", "reset"], {
-    TEST_DATABASE_MIGRATION_URL: migrationDatabaseUrl,
-    TEST_DATABASE_URL: runtimeDatabaseUrl,
-  });
-  await run(
-    process.execPath,
-    [tsxCli, "artifacts/api-server/src/lib/library-auth.integration.test.ts"],
-    {
+  const integrationTests = [
+    "artifacts/api-server/src/lib/library-auth.integration.test.ts",
+    "artifacts/api-server/src/lib/knowledge-graph.integration.test.ts",
+  ];
+
+  for (const testFile of integrationTests) {
+    await run(process.execPath, ["scripts/db-test.mjs", "reset"], {
+      TEST_DATABASE_MIGRATION_URL: migrationDatabaseUrl,
+      TEST_DATABASE_URL: runtimeDatabaseUrl,
+    });
+    await run(process.execPath, [tsxCli, testFile], {
       DATABASE_URL: runtimeDatabaseUrl,
       TEST_DATABASE_MIGRATION_URL: migrationDatabaseUrl,
       TEST_DATABASE_URL: runtimeDatabaseUrl,
       NODE_ENV: "test",
       SESSION_SECRET: "integration-test-session-secret",
-    },
-  );
+    });
+  }
 } catch (error) {
   console.error(error instanceof Error ? error.message : error);
   process.exitCode = 1;

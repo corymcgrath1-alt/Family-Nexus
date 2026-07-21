@@ -11,7 +11,13 @@ on:
       - "artifacts/api-server/**"
       - "artifacts/family-app/**"
       - "docs/development/database-testing.md"
+      - "docs/architecture/**"
+      - "docs/data-classification.md"
+      - "docs/data-lifecycle-map.md"
+      - "docs/roadmap.md"
+      - "docs/security-threat-model.md"
       - "lib/db/**"
+      - "lib/knowledge-model/**"
       - "package.json"
       - "playwright.config.ts"
       - "pnpm-lock.yaml"
@@ -24,7 +30,13 @@ on:
       - "artifacts/api-server/**"
       - "artifacts/family-app/**"
       - "docs/development/database-testing.md"
+      - "docs/architecture/**"
+      - "docs/data-classification.md"
+      - "docs/data-lifecycle-map.md"
+      - "docs/roadmap.md"
+      - "docs/security-threat-model.md"
       - "lib/db/**"
+      - "lib/knowledge-model/**"
       - "package.json"
       - "playwright.config.ts"
       - "pnpm-lock.yaml"
@@ -100,6 +112,9 @@ jobs:
 
       - name: Policy unit tests
         run: pnpm run test:library-policy
+
+      - name: Knowledge model unit tests
+        run: pnpm run test:knowledge-model
 
       - name: Database-backed API integration tests
         run: pnpm run test:integration
