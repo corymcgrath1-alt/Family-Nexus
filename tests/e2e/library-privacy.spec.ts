@@ -55,7 +55,7 @@ test("Family Library private, shared, household, and revoked access stay bounded
   await expect(page.getByTestId("library-selected-detail")).toContainText(privateTitle);
   await page.getByLabel("Share with adult").selectOption({ label: "Adult B E2E" });
   await page.getByRole("button", { name: "Share" }).click();
-  await expect(page.getByText("Adult B E2E")).toBeVisible();
+  await expect(page.getByTestId("library-active-grants").getByText("Adult B E2E")).toBeVisible();
 
   await pageB.bringToFront();
   await pageB.goto("/library");

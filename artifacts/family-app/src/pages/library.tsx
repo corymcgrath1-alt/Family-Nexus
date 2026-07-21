@@ -581,7 +581,7 @@ export default function LibraryPage() {
                     <div className="rounded-md border border-border p-3 space-y-3">
                       <h3 className="text-sm font-medium flex items-center gap-2"><Share2 className="w-4 h-4" /> Sharing</h3>
                       {selectedActiveGrants.length > 0 ? (
-                        <div className="space-y-2">
+                        <div data-testid="library-active-grants" className="space-y-2">
                           {selectedActiveGrants.map((grant) => (
                             <div key={grant.id} className="flex items-center justify-between gap-3 text-sm">
                               <span>{memberName(members, grant.granteeUserId)}</span>
