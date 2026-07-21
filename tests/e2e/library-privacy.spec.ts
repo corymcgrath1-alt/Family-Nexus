@@ -10,6 +10,9 @@ test("Family Library private, shared, household, and revoked access stay bounded
   const privateBody = `E2E_PRIVATE_BODY_${suffix}`;
   const householdTitle = `E2E_HOUSEHOLD_TITLE_${suffix}`;
   const householdBody = `E2E_HOUSEHOLD_BODY_${suffix}`;
+  const bPrivateTitle = `E2E_B_PRIVATE_TITLE_${suffix}`;
+  const bPrivateBody = `E2E_B_PRIVATE_BODY_${suffix}`;
+  const correctedBody = `E2E_CORRECTED_BODY_${suffix}`;
 
   await registerAdultA(page, {
     householdName: `E2E Household ${suffix}`,
@@ -99,11 +102,44 @@ test("Family Library private, shared, household, and revoked access stay bounded
   const householdDirect = await pageB.context().request.get(`/api/library/items/${householdId}`);
   expect(householdDirect.status()).toBe(200);
 
+  await pageB.getByLabel("Search Library").fill("");
+  await createLibraryItem(pageB, {
+    title: bPrivateTitle,
+    body: bPrivateBody,
+    access: "Private",
+  });
+  const bPrivateId = await lookupLibraryItemId(pageB.context(), bPrivateTitle);
+
   await page.bringToFront();
   await page.goto("/library");
+  await page.getByLabel("Search Library").fill(bPrivateTitle);
+  await expect(page.getByText(bPrivateTitle)).toHaveCount(0);
+  await assertApiNotFound(page.context(), `/api/library/items/${bPrivateId}`, [bPrivateTitle, bPrivateBody]);
+
   await page.getByLabel("Search Library").fill(privateTitle);
   await expect(page.getByTestId("library-selected-detail")).toContainText(privateTitle);
   await expect(page.getByTestId("library-selected-body")).toContainText(privateBody);
+  await expect(page.getByTestId("library-selected-detail")).toContainText("Library sharing revoked");
+
+  await page.getByLabel("Correction body").fill(correctedBody);
+  await page.getByRole("button", { name: "Save correction" }).click();
+  await expect(page.getByTestId("library-selected-body")).toContainText(correctedBody);
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByLabel("Export JSON").click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe(`lighthouse-library-item-${privateId}.json`);
+  await download.delete();
+
+  await page.getByLabel("Archive item").click();
+  await expect(page.getByTestId("library-selected-detail")).toContainText("Archived");
+
+  page.once("dialog", async (dialog) => {
+    expect(dialog.type()).toBe("confirm");
+    await dialog.accept();
+  });
+  await page.getByLabel("Delete item").click();
+  await expect(page.getByText(privateTitle)).toHaveCount(0);
 
   await contextB.close();
 });
