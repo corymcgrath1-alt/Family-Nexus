@@ -883,7 +883,17 @@ function assertIncludesToken(value: unknown, token: string) {
 }
 
 function isRowSecurityError(error: unknown): boolean {
-  assert(error && typeof error === "object" && "code" in error);
-  assert.equal((error as { code: string }).code, "42501");
+  const seen = new Set<object>();
+  let current = error;
+
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    if ("code" in current && current.code === "42501") {
+      return true;
+    }
+    current = "cause" in current ? current.cause : undefined;
+  }
+
+  assert.fail("Expected PostgreSQL row-security error 42501");
   return true;
 }
