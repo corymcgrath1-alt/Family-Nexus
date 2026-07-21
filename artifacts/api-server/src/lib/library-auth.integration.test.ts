@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { after, before, test } from "node:test";
 import { eq } from "drizzle-orm";
@@ -50,6 +51,22 @@ type TestClient = {
   ) => Promise<{ status: number; body: unknown; text: string }>;
 };
 
+type InsightResponseFixture = {
+  coverage: {
+    rowLimitApplied: boolean;
+    exactForDatabaseSnapshot: boolean;
+  };
+  metrics: {
+    visibleItems: { value: number };
+    ownedItems: { value: number };
+    sharedWithMe: { value: number };
+    householdItems: { value: number };
+    archivedItems: { value: number };
+    byCategory: { values: Record<string, number> };
+    bySensitivity: { values: Record<string, number> };
+  };
+};
+
 let server: Server;
 let baseUrl = "";
 let dbModule: DbModule;
@@ -86,6 +103,71 @@ after(async () => {
 
 test("migration creates the schema constraints required by the privacy slice", async () => {
   await assertSchema(dbModule, migrationDatabase);
+});
+
+test("migration 0003 backfills a non-empty legacy definition registry", async () => {
+  const migrationSql = await readFile(
+    new URL(
+      "../../../../lib/db/migrations/0003_library_insights.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const client = await migrationDatabase.pool.connect();
+  try {
+    await client.query("begin");
+    await client.query("create schema insight_migration_legacy");
+    await client.query("set local search_path to insight_migration_legacy");
+    await client.query(`
+      create table signal_definitions (
+        id serial primary key,
+        name text not null,
+        domain text not null,
+        unit text not null,
+        time_window text not null,
+        formula_version text not null,
+        definition text not null,
+        input_requirements jsonb not null default '{}'::jsonb,
+        allowed_uses jsonb not null default '[]'::jsonb,
+        prohibited_uses jsonb not null default '[]'::jsonb,
+        sensitivity text not null default 'personal',
+        created_at timestamp with time zone not null default now(),
+        updated_at timestamp with time zone not null default now()
+      )
+    `);
+    await client.query(`
+      insert into signal_definitions (
+        name, domain, unit, time_window, formula_version, definition
+      ) values (
+        'Legacy definition', 'legacy', 'items', 'unknown', 'v0',
+        'Definition present before governed metadata existed.'
+      )
+    `);
+    await client.query(migrationSql);
+
+    const rows = await client.query<{
+      definition_key: string;
+      status: string;
+      disabled_at: Date | null;
+    }>(
+      "select definition_key, status, disabled_at from signal_definitions order by definition_key",
+    );
+    assert.equal(rows.rows.length, 8);
+    const legacy = rows.rows.find((row) =>
+      row.definition_key.startsWith("legacy."),
+    );
+    assert(legacy);
+    assert.match(legacy.definition_key, /^legacy\.[a-f0-9]{32}$/);
+    assert.equal(legacy.status, "disabled");
+    assert(legacy.disabled_at instanceof Date);
+    assert.equal(rows.rows.filter((row) => row.status === "active").length, 7);
+    await client.query("rollback");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
 });
 
 test("restricted runtime RLS fails closed and isolates person-owned rows", async () => {
@@ -179,7 +261,7 @@ test("restricted runtime RLS fails closed and isolates person-owned rows", async
       assert.equal(
         (await dbModule.db.select().from(dbModule.signalObservationsTable))
           .length,
-        1,
+        0,
       );
     },
   );
@@ -301,16 +383,43 @@ test("restricted runtime RLS fails closed and isolates person-owned rows", async
   const referenceRows = await dbModule.db
     .select()
     .from(dbModule.signalDefinitionsTable);
-  assert.equal(referenceRows.length, 1);
+  assert.equal(referenceRows.length, 7);
   await assert.rejects(
     dbModule.db.insert(dbModule.signalDefinitionsTable).values({
+      definitionKey: "unauthorized.definition",
       name: "Unauthorized definition",
       domain: "test",
       unit: "count",
       timeWindow: "point-in-time",
       formulaVersion: "v1",
       definition: "Runtime roles cannot mutate global definitions.",
+      inputRequirements: {},
+      evidenceKind: "deterministic_derived_metric",
+      outputShape: { kind: "scalar_count" },
+      missingDataSemantics: {},
+      baselineSemantics: {},
+      evidenceThreshold: {},
+      uncertaintySemantics: {},
+      allowedUses: [],
+      prohibitedUses: [],
+      ownerScope: "requesting_user",
+      defaultVisibility: "private",
+      explanation: "Unauthorized definition",
+      status: "active",
     }),
+    isRowSecurityError,
+  );
+  await assert.rejects(
+    dbModule.db
+      .update(dbModule.signalDefinitionsTable)
+      .set({ name: "Unauthorized update" })
+      .where(eq(dbModule.signalDefinitionsTable.id, referenceRows[0].id)),
+    isRowSecurityError,
+  );
+  await assert.rejects(
+    dbModule.db
+      .delete(dbModule.signalDefinitionsTable)
+      .where(eq(dbModule.signalDefinitionsTable.id, referenceRows[0].id)),
     isRowSecurityError,
   );
 });
@@ -373,6 +482,89 @@ test("connector catalog is authenticated, deterministic, and non-activating", as
   );
   assert.equal(missing.status, 404);
   assert.deepEqual(missing.body, { error: "Not found" });
+});
+
+test("governed insight definitions are authenticated, ordered, strict, and write-free", async () => {
+  const anonymous = createClient();
+  assert.equal(
+    (await anonymous.request("/api/insights/definitions")).status,
+    401,
+  );
+  assert.equal((await anonymous.request("/api/insights/library")).status, 401);
+
+  const before = await protectedRowCounts(migrationDatabase);
+  const adultA = await login(fixtures.adultA.email);
+  const response = await adultA.request("/api/insights/definitions");
+  assert.equal(response.status, 200);
+
+  const { ListLibraryInsightDefinitionsResponse } =
+    await import("@workspace/api-zod");
+  assert.equal(
+    ListLibraryInsightDefinitionsResponse.safeParse(response.body).success,
+    true,
+  );
+  const payload = response.body as {
+    catalogVersion: string;
+    definitions: Array<{
+      definitionKey: string;
+      formulaVersion: string;
+      evidenceKind: string;
+      ownerScope: string;
+      defaultVisibility: string;
+      allowedUses: string[];
+      prohibitedUses: string[];
+      uncertaintySemantics: {
+        calculation: string;
+        sourceCompleteness: string;
+      };
+    }>;
+  };
+  assert.equal(payload.catalogVersion, "library-insights.v1");
+  assert.deepEqual(
+    payload.definitions.map((definition) => definition.definitionKey),
+    [
+      "library.archived_items.count",
+      "library.household_items.count",
+      "library.items_by_category.count",
+      "library.items_by_sensitivity.count",
+      "library.owned_items.count",
+      "library.shared_with_me.count",
+      "library.visible_items.count",
+    ],
+  );
+  for (const definition of payload.definitions) {
+    assert.equal(definition.formulaVersion, "v1");
+    assert.equal(definition.evidenceKind, "deterministic_derived_metric");
+    assert.equal(definition.ownerScope, "requesting_user");
+    assert.equal(definition.defaultVisibility, "private");
+    assert(definition.allowedUses.length > 0);
+    assert(
+      definition.prohibitedUses.some((use) => /comparing adults/i.test(use)),
+    );
+    assert(definition.prohibitedUses.some((use) => /eligibility/i.test(use)));
+    assert.equal(definition.uncertaintySemantics.calculation, "none");
+    assert.equal(
+      definition.uncertaintySemantics.sourceCompleteness,
+      "unknown_user_controlled",
+    );
+  }
+  assert.deepEqual(await protectedRowCounts(migrationDatabase), before);
+
+  const key = "library.visible_items.count";
+  await migrationDatabase.db
+    .update(dbModule.signalDefinitionsTable)
+    .set({ ownerScope: "malformed_household_scope" })
+    .where(eq(dbModule.signalDefinitionsTable.definitionKey, key));
+  try {
+    const malformed = await adultA.request("/api/insights/definitions");
+    assert.equal(malformed.status, 500);
+    assert.deepEqual(malformed.body, { error: "Insights are unavailable" });
+  } finally {
+    await migrationDatabase.db
+      .update(dbModule.signalDefinitionsTable)
+      .set({ ownerScope: "requesting_user" })
+      .where(eq(dbModule.signalDefinitionsTable.definitionKey, key));
+  }
 });
 
 test("manual JSON import creates one actor-owned private copy without restoring authority", async () => {
@@ -618,6 +810,309 @@ test("manual JSON import creates one actor-owned private copy without restoring 
   await assertDenied(adultB, `/api/library/items/${created.id}`);
 });
 
+test("exact Library insights preserve RLS parity, revocation, dimensions, and write-free reads", async () => {
+  const bcryptModule = await import("bcryptjs");
+  const bcrypt = bcryptModule.default ?? bcryptModule;
+  const passwordHash = await bcrypt.hash(password, 4);
+  const [household] = await migrationDatabase.db
+    .insert(dbModule.householdsTable)
+    .values({ name: "Insight Test Household" })
+    .returning();
+  const [otherHousehold] = await migrationDatabase.db
+    .insert(dbModule.householdsTable)
+    .values({ name: "Insight Outside Household" })
+    .returning();
+
+  async function createInsightUser(
+    householdId: number,
+    displayName: string,
+    email: string,
+  ) {
+    const [user] = await migrationDatabase.db
+      .insert(dbModule.usersTable)
+      .values({
+        householdId,
+        lighthousePassportId: newPassportId(),
+        email,
+        passwordHash,
+        displayName,
+        role: "adult",
+        avatarInitials: displayName
+          .split(/\s+/)
+          .map((part) => part[0])
+          .join("")
+          .toUpperCase(),
+        color: "#35605A",
+      })
+      .returning();
+    return user;
+  }
+
+  const adultA = await createInsightUser(
+    household.id,
+    "Insight Adult A",
+    "insight.adult.a@example.test",
+  );
+  const adultB = await createInsightUser(
+    household.id,
+    "Insight Adult B",
+    "insight.adult.b@example.test",
+  );
+  const outsider = await createInsightUser(
+    otherHousehold.id,
+    "Insight Outsider",
+    "insight.outsider@example.test",
+  );
+
+  const aPrivate = await createItem(dbModule, migrationDatabase.db, adultA, {
+    title: "INSIGHT_A_PRIVATE_MEDICAL_TITLE",
+    body: "INSIGHT_A_PRIVATE_MEDICAL_BODY",
+    category: "medical-reference",
+    sensitivity: "restricted",
+  });
+  const aShared = await createItem(dbModule, migrationDatabase.db, adultA, {
+    title: "INSIGHT_A_SHARED_INSTRUCTION_TITLE",
+    body: "INSIGHT_A_SHARED_INSTRUCTION_BODY",
+    visibility: "shared",
+    category: "instruction",
+    sensitivity: "sensitive",
+  });
+  await createItem(dbModule, migrationDatabase.db, adultA, {
+    title: "INSIGHT_HOUSEHOLD_DECISION_TITLE",
+    body: "INSIGHT_HOUSEHOLD_DECISION_BODY",
+    visibility: "household",
+    category: "decision",
+    sensitivity: "standard",
+  });
+  await createItem(dbModule, migrationDatabase.db, adultA, {
+    title: "INSIGHT_A_ARCHIVED_MEMORY_TITLE",
+    body: "INSIGHT_A_ARCHIVED_MEMORY_BODY",
+    category: "memory",
+    sensitivity: "personal",
+    status: "archived",
+  });
+  await createItem(dbModule, migrationDatabase.db, adultA, {
+    title: "INSIGHT_A_DELETED_VEHICLE_TITLE",
+    body: "INSIGHT_A_DELETED_VEHICLE_BODY",
+    category: "vehicle-record",
+    sensitivity: "restricted",
+    status: "deleted",
+  });
+  await createItem(dbModule, migrationDatabase.db, adultB, {
+    title: "INSIGHT_B_PRIVATE_NOTE_TITLE",
+    body: "INSIGHT_B_PRIVATE_NOTE_BODY",
+    category: "note",
+    sensitivity: "personal",
+  });
+  await createItem(dbModule, migrationDatabase.db, adultB, {
+    title: "INSIGHT_B_ARCHIVED_DOCUMENT_TITLE",
+    body: "INSIGHT_B_ARCHIVED_DOCUMENT_BODY",
+    category: "document-reference",
+    sensitivity: "personal",
+    status: "archived",
+  });
+  await createItem(dbModule, migrationDatabase.db, outsider, {
+    title: "INSIGHT_OUTSIDER_CAREER_TITLE",
+    body: "INSIGHT_OUTSIDER_CAREER_BODY",
+    category: "career-record",
+    sensitivity: "restricted",
+  });
+
+  const clientA = await login(adultA.email);
+  const clientB = await login(adultB.email);
+  const { GetLibraryInsightsResponse, GetLibraryStatsResponse } =
+    await import("@workspace/api-zod");
+
+  const beforeRead = await protectedRowCounts(migrationDatabase);
+  const aResponse = await clientA.request("/api/insights/library");
+  assert.equal(aResponse.status, 200);
+  assert.equal(
+    GetLibraryInsightsResponse.safeParse(aResponse.body).success,
+    true,
+  );
+  const aInsights = aResponse.body as InsightResponseFixture;
+  assertInsightScalars(aInsights, {
+    visibleItems: 4,
+    ownedItems: 4,
+    sharedWithMe: 0,
+    householdItems: 1,
+    archivedItems: 1,
+  });
+  assert.equal(aInsights.metrics.byCategory.values["medical-reference"], 1);
+  assert.equal(aInsights.metrics.byCategory.values.memory, 1);
+  assert.equal(aInsights.metrics.byCategory.values["vehicle-record"], 0);
+  assert.equal(aInsights.metrics.bySensitivity.values.restricted, 1);
+
+  const bBeforeShareResponse = await clientB.request("/api/insights/library");
+  assert.equal(bBeforeShareResponse.status, 200);
+  const bBeforeShare = bBeforeShareResponse.body as InsightResponseFixture;
+  assertInsightScalars(bBeforeShare, {
+    visibleItems: 3,
+    ownedItems: 2,
+    sharedWithMe: 0,
+    householdItems: 1,
+    archivedItems: 1,
+  });
+  assert.equal(bBeforeShare.metrics.byCategory.values["medical-reference"], 0);
+  assert.equal(bBeforeShare.metrics.byCategory.values.instruction, 0);
+  assert.equal(bBeforeShare.metrics.bySensitivity.values.restricted, 0);
+  assert.equal(bBeforeShare.metrics.bySensitivity.values.sensitive, 0);
+  assert.deepEqual(await protectedRowCounts(migrationDatabase), beforeRead);
+
+  const forbiddenTokens = [
+    aPrivate.title,
+    aPrivate.body!,
+    aShared.title,
+    aShared.body!,
+    "Synthetic privacy fixture",
+  ];
+  assertNoTokens(bBeforeShare, forbiddenTokens);
+  assertNoInsightContentFields(bBeforeShare);
+  assert.deepEqual(Object.keys(bBeforeShare.metrics.byCategory.values), [
+    "note",
+    "document-reference",
+    "instruction",
+    "decision",
+    "memory",
+    "medical-reference",
+    "household-record",
+    "vehicle-record",
+    "career-record",
+    "other",
+  ]);
+  assert.deepEqual(Object.keys(bBeforeShare.metrics.bySensitivity.values), [
+    "standard",
+    "personal",
+    "sensitive",
+    "restricted",
+  ]);
+
+  const malformedResponse = structuredClone(
+    bBeforeShare,
+  ) as InsightResponseFixture;
+  malformedResponse.metrics.visibleItems.value = -1;
+  assert.equal(
+    GetLibraryInsightsResponse.safeParse(malformedResponse).success,
+    false,
+  );
+
+  const { calculateLibraryInsights } =
+    await import("./library-insights-service");
+  await assert.rejects(
+    calculateLibraryInsights({ id: adultB.id, householdId: household.id }),
+    /actor context is missing or mismatched/i,
+  );
+
+  const share = await clientA.request(
+    `/api/library/items/${aShared.id}/share`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        granteeUserId: adultB.id,
+        purpose: "insight_authorization_parity",
+      }),
+    },
+  );
+  assert.equal(share.status, 200);
+  const grant = (
+    share.body as { grants: Array<{ id: number; granteeUserId: number }> }
+  ).grants.find((candidate) => candidate.granteeUserId === adultB.id);
+  assert(grant);
+
+  const bSharedResponse = await clientB.request("/api/insights/library");
+  assert.equal(bSharedResponse.status, 200);
+  const bShared = bSharedResponse.body as InsightResponseFixture;
+  assertInsightScalars(bShared, {
+    visibleItems: 4,
+    ownedItems: 2,
+    sharedWithMe: 1,
+    householdItems: 1,
+    archivedItems: 1,
+  });
+  assert.equal(bShared.metrics.byCategory.values.instruction, 1);
+  assert.equal(bShared.metrics.bySensitivity.values.sensitive, 1);
+  assertNoTokens(bShared, forbiddenTokens);
+
+  const revoke = await clientA.request(
+    `/api/library/items/${aShared.id}/revoke`,
+    {
+      method: "POST",
+      body: JSON.stringify({ grantId: grant.id }),
+    },
+  );
+  assert.equal(revoke.status, 200);
+  const bRevokedResponse = await clientB.request("/api/insights/library");
+  assert.equal(bRevokedResponse.status, 200);
+  const bRevoked = bRevokedResponse.body as InsightResponseFixture;
+  assertInsightScalars(bRevoked, {
+    visibleItems: 3,
+    ownedItems: 2,
+    sharedWithMe: 0,
+    householdItems: 1,
+    archivedItems: 1,
+  });
+  assert.equal(bRevoked.metrics.byCategory.values.instruction, 0);
+  assert.equal(bRevoked.metrics.bySensitivity.values.sensitive, 0);
+  assertNoTokens(bRevoked, forbiddenTokens);
+
+  const bulkRows = Array.from({ length: 505 }, (_, index) => ({
+    householdId: household.id,
+    ownerUserId: adultB.id,
+    subjectUserId: adultB.id,
+    ownerKind: "person",
+    visibility: "private",
+    category: "note",
+    title: `INSIGHT_BULK_${index}`,
+    body: null,
+    sourceType: "manual",
+    sourceLabel: null,
+    provenance: { fixture: true },
+    sensitivity: "personal",
+    status: "active",
+    createdById: adultB.id,
+    updatedById: adultB.id,
+  }));
+  await migrationDatabase.db
+    .insert(dbModule.libraryItemsTable)
+    .values(bulkRows);
+
+  const beforeLargeRead = await protectedRowCounts(migrationDatabase);
+  const largeInsightsResponse = await clientB.request("/api/insights/library");
+  assert.equal(largeInsightsResponse.status, 200);
+  const largeInsights = largeInsightsResponse.body as InsightResponseFixture;
+  assertInsightScalars(largeInsights, {
+    visibleItems: 508,
+    ownedItems: 507,
+    sharedWithMe: 0,
+    householdItems: 1,
+    archivedItems: 1,
+  });
+  assert.equal(largeInsights.metrics.byCategory.values.note, 506);
+  assert.equal(largeInsights.metrics.bySensitivity.values.personal, 507);
+  assert.equal(largeInsights.coverage.rowLimitApplied, false);
+  assert.equal(largeInsights.coverage.exactForDatabaseSnapshot, true);
+
+  const legacyStats = await clientB.request("/api/library/stats");
+  assert.equal(legacyStats.status, 200);
+  assert.equal(
+    GetLibraryStatsResponse.safeParse(legacyStats.body).success,
+    true,
+  );
+  assert.deepEqual(legacyStats.body, {
+    visibleItems: 508,
+    ownedItems: 507,
+    sharedWithMe: 0,
+    householdItems: 1,
+    byCategory: largeInsights.metrics.byCategory.values,
+    bySensitivity: largeInsights.metrics.bySensitivity.values,
+  });
+  assert.deepEqual(
+    await protectedRowCounts(migrationDatabase),
+    beforeLargeRead,
+  );
+  assert.equal(beforeLargeRead.signal_observations, 0);
+});
+
 test("Adult B cannot infer Adult A private library records without an active read grant", async () => {
   const adultA = await login(fixtures.adultA.email);
   const adultB = await login(fixtures.adultB.email);
@@ -822,10 +1317,11 @@ async function assertSchema(dbm: DbModule, database: DatabaseInstance) {
         "sharing_grants_resource_idx",
         "sharing_grants_grantee_idx",
         "audit_events_target_idx",
+        "signal_definitions_key_version_uq",
       ],
     ],
   );
-  assert.equal(indexRows.rows.length, 5);
+  assert.equal(indexRows.rows.length, 6);
 
   const nullability = await database.pool.query(
     `select table_name, column_name, is_nullable
@@ -836,6 +1332,18 @@ async function assertSchema(dbm: DbModule, database: DatabaseInstance) {
          ('library_items', 'body'),
          ('sharing_grants', 'grantee_user_id'),
          ('audit_events', 'metadata'),
+         ('signal_definitions', 'definition_key'),
+         ('signal_definitions', 'evidence_kind'),
+         ('signal_definitions', 'output_shape'),
+         ('signal_definitions', 'missing_data_semantics'),
+         ('signal_definitions', 'baseline_semantics'),
+         ('signal_definitions', 'evidence_threshold'),
+         ('signal_definitions', 'uncertainty_semantics'),
+         ('signal_definitions', 'owner_scope'),
+         ('signal_definitions', 'default_visibility'),
+         ('signal_definitions', 'explanation'),
+         ('signal_definitions', 'status'),
+         ('signal_definitions', 'disabled_at'),
          ('session', 'sid')
        )`,
   );
@@ -852,7 +1360,67 @@ async function assertSchema(dbm: DbModule, database: DatabaseInstance) {
   assert.equal(nullabilityByColumn.get("library_items.body"), "YES");
   assert.equal(nullabilityByColumn.get("sharing_grants.grantee_user_id"), "NO");
   assert.equal(nullabilityByColumn.get("audit_events.metadata"), "NO");
+  for (const column of [
+    "definition_key",
+    "evidence_kind",
+    "output_shape",
+    "missing_data_semantics",
+    "baseline_semantics",
+    "evidence_threshold",
+    "uncertainty_semantics",
+    "owner_scope",
+    "default_visibility",
+    "explanation",
+    "status",
+  ]) {
+    assert.equal(nullabilityByColumn.get(`signal_definitions.${column}`), "NO");
+  }
+  assert.equal(
+    nullabilityByColumn.get("signal_definitions.disabled_at"),
+    "YES",
+  );
   assert.equal(nullabilityByColumn.get("session.sid"), "NO");
+
+  const definitions = await database.pool.query<{
+    definition_key: string;
+    formula_version: string;
+    evidence_kind: string;
+    owner_scope: string;
+    default_visibility: string;
+    status: string;
+    disabled_at: Date | null;
+  }>(`
+    select
+      definition_key,
+      formula_version,
+      evidence_kind,
+      owner_scope,
+      default_visibility,
+      status,
+      disabled_at
+    from signal_definitions
+    order by definition_key
+  `);
+  assert.deepEqual(
+    definitions.rows.map((row) => row.definition_key),
+    [
+      "library.archived_items.count",
+      "library.household_items.count",
+      "library.items_by_category.count",
+      "library.items_by_sensitivity.count",
+      "library.owned_items.count",
+      "library.shared_with_me.count",
+      "library.visible_items.count",
+    ],
+  );
+  for (const definition of definitions.rows) {
+    assert.equal(definition.formula_version, "v1");
+    assert.equal(definition.evidence_kind, "deterministic_derived_metric");
+    assert.equal(definition.owner_scope, "requesting_user");
+    assert.equal(definition.default_visibility, "private");
+    assert.equal(definition.status, "active");
+    assert.equal(definition.disabled_at, null);
+  }
 
   const foreignKeys = await database.pool.query(
     `select count(*)::int as count
@@ -1035,28 +1603,6 @@ async function seedFixtures(
     allowedUse: "read",
     prohibitedUses: ["reshare", "train_model"],
   });
-  const [signal] = await database
-    .insert(dbm.signalDefinitionsTable)
-    .values({
-      name: "Fixture signal",
-      domain: "library",
-      unit: "count",
-      timeWindow: "point-in-time",
-      formulaVersion: "v1",
-      definition: "Synthetic fixture signal for privacy integration tests.",
-    })
-    .returning();
-  await database.insert(dbm.signalObservationsTable).values({
-    householdId: household.id,
-    ownerUserId: adultA.id,
-    subjectUserId: adultA.id,
-    signalDefinitionId: signal.id,
-    value: "1",
-    evidenceWindow: "2026-07-20",
-    provenance: { fixture: true },
-    visibility: "private",
-  });
-
   const aPrivate = await createItem(dbm, database, adultA, {
     title: "A_PRIVATE_TITLE_ALPHA",
     body: "A_PRIVATE_CONTENT_ALPHA",
@@ -1192,9 +1738,14 @@ async function createItem(
     visibility?: "private" | "shared" | "household";
     ownerKind?: string;
     subjectUserId?: number | null;
+    category?: string;
+    sensitivity?: string;
+    status?: "active" | "archived" | "deleted";
   },
 ) {
   const visibility = input.visibility ?? "private";
+  const status = input.status ?? "active";
+  const lifecycleAt = status === "active" ? null : new Date();
   const [item] = await database
     .insert(dbm.libraryItemsTable)
     .values({
@@ -1206,14 +1757,19 @@ async function createItem(
         input.ownerKind ??
         (visibility === "household" ? "household" : "person"),
       visibility,
-      category: visibility === "household" ? "household-record" : "note",
+      category:
+        input.category ??
+        (visibility === "household" ? "household-record" : "note"),
       title: input.title,
       body: input.body,
       sourceType: "manual",
       sourceLabel: "Synthetic privacy fixture",
       provenance: { fixture: true, recordedByUserId: owner.id },
-      sensitivity: "sensitive",
+      sensitivity: input.sensitivity ?? "sensitive",
       allowedPurposes: ["remember", "search", "share"],
+      status,
+      archivedAt: status === "archived" ? lifecycleAt : null,
+      deletedAt: status === "deleted" ? lifecycleAt : null,
       createdById: owner.id,
       updatedById: owner.id,
     })
@@ -1295,6 +1851,70 @@ function createClient(): TestClient {
       return { status: response.status, body, text };
     },
   };
+}
+
+async function protectedRowCounts(database: DatabaseInstance) {
+  const result = await database.pool.query<{
+    signal_definitions: number;
+    signal_observations: number;
+    audit_events: number;
+    library_items: number;
+    sharing_grants: number;
+    consent_grants: number;
+    data_records: number;
+    data_sources: number;
+  }>(`select
+      (select count(*)::int from signal_definitions) as signal_definitions,
+      (select count(*)::int from signal_observations) as signal_observations,
+      (select count(*)::int from audit_events) as audit_events,
+      (select count(*)::int from library_items) as library_items,
+      (select count(*)::int from sharing_grants) as sharing_grants,
+      (select count(*)::int from consent_grants) as consent_grants,
+      (select count(*)::int from data_records) as data_records,
+      (select count(*)::int from data_sources) as data_sources`);
+  return result.rows[0];
+}
+
+function assertInsightScalars(
+  insights: InsightResponseFixture,
+  expected: {
+    visibleItems: number;
+    ownedItems: number;
+    sharedWithMe: number;
+    householdItems: number;
+    archivedItems: number;
+  },
+) {
+  for (const [key, value] of Object.entries(expected) as Array<
+    [keyof typeof expected, number]
+  >) {
+    assert.equal(insights.metrics[key].value, value, key);
+  }
+}
+
+function assertNoInsightContentFields(value: unknown): void {
+  const forbidden = new Set([
+    "id",
+    "itemId",
+    "grantId",
+    "title",
+    "body",
+    "sourceLabel",
+    "provenance",
+    "provenanceNote",
+    "auditEventId",
+  ]);
+
+  if (Array.isArray(value)) {
+    value.forEach(assertNoInsightContentFields);
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+
+  for (const [key, child] of Object.entries(value)) {
+    assert.equal(forbidden.has(key), false, `Forbidden insight field: ${key}`);
+    assertNoInsightContentFields(child);
+  }
 }
 
 async function assertCanRead(

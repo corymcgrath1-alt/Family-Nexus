@@ -6,6 +6,7 @@ on:
     branches:
       - codex/lighthouse-core
       - codex/lighthouse-connectors
+      - codex/lighthouse-insights
       - main
     paths:
       - ".github/workflows/lighthouse-privacy.yml"
@@ -13,8 +14,12 @@ on:
       - "artifacts/family-app/**"
       - "docs/development/database-testing.md"
       - "docs/connectors/**"
+      - "docs/insights/**"
       - "docs/architecture/lighthouse-platform-boundaries.md"
+      - "docs/data-classification.md"
+      - "docs/data-lifecycle-map.md"
       - "docs/roadmap.md"
+      - "docs/security-threat-model.md"
       - "lib/api-client-react/**"
       - "lib/api-spec/**"
       - "lib/api-zod/**"
@@ -32,8 +37,12 @@ on:
       - "artifacts/family-app/**"
       - "docs/development/database-testing.md"
       - "docs/connectors/**"
+      - "docs/insights/**"
       - "docs/architecture/lighthouse-platform-boundaries.md"
+      - "docs/data-classification.md"
+      - "docs/data-lifecycle-map.md"
       - "docs/roadmap.md"
+      - "docs/security-threat-model.md"
       - "lib/api-client-react/**"
       - "lib/api-spec/**"
       - "lib/api-zod/**"
@@ -121,6 +130,9 @@ jobs:
 
       - name: Connector catalog unit tests
         run: pnpm run test:connector-catalog
+
+      - name: Library insights unit tests
+        run: pnpm run test:library-insights
 
       - name: Database-backed API integration tests
         run: pnpm run test:integration

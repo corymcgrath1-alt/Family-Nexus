@@ -27,6 +27,7 @@ pnpm run db:test:down
 pnpm run test:integration
 pnpm run test:e2e
 pnpm run test:connector-catalog
+pnpm run test:library-insights
 ```
 
 `db:test:up` starts a Docker container named `lighthouse-postgres-test` using
@@ -81,6 +82,16 @@ place and they require a separate migration and policy review before conversion.
 Future tables receive no runtime privileges by default and must be granted
 deliberately in a reviewed migration.
 
+Migration `0003_library_insights.sql` extends `signal_definitions` with governed
+definition, evidence, output, coverage, uncertainty, ownership, visibility,
+explanation, and lifecycle metadata. It safely disables and assigns unique
+legacy keys to pre-existing rows before enforcing the unique
+`definition_key, formula_version` index, then seeds the seven Phase 4A Library
+definitions. Runtime definition mutations remain revoked. Integration tests
+exercise clean migration, legacy-row backfill, runtime read-only authority,
+strict response validation, actor-scoped exact counts above 500 rows, and
+write-free insight GETs.
+
 ## Migration Contract
 
 The repository's test and CI migration convention is ordered SQL under
@@ -104,6 +115,7 @@ pnpm run db:test:migrate
 pnpm run typecheck
 pnpm run test:library-policy
 pnpm run test:connector-catalog
+pnpm run test:library-insights
 pnpm run test:integration
 pnpm run test:e2e
 pnpm --filter @workspace/api-server run build

@@ -264,6 +264,142 @@ test("manual JSON import creates a private copy and unavailable connectors have 
   await contextB.close();
 });
 
+test("Insights presents exact deterministic counts and remains reachable on mobile", async ({
+  page,
+}) => {
+  const suffix = Date.now();
+
+  await registerAdultA(page, {
+    householdName: `Insights Household ${suffix}`,
+    displayName: "Insights Adult",
+    email: `insights.presentation.${suffix}@example.test`,
+  });
+
+  const privateItem = await createLibraryItemThroughApi(page.context(), {
+    title: `INSIGHT_PRESENTATION_PRIVATE_${suffix}`,
+    body: `INSIGHT_PRESENTATION_PRIVATE_BODY_${suffix}`,
+    category: "note",
+    visibility: "private",
+    sensitivity: "personal",
+  });
+  await createLibraryItemThroughApi(page.context(), {
+    title: `INSIGHT_PRESENTATION_HOUSEHOLD_${suffix}`,
+    body: `INSIGHT_PRESENTATION_HOUSEHOLD_BODY_${suffix}`,
+    category: "household-record",
+    visibility: "household",
+    sensitivity: "standard",
+  });
+  const archive = await page.context().request.patch(
+    `/api/library/items/${privateItem.id}`,
+    { data: { status: "archived" } },
+  );
+  expect(archive.status()).toBe(200);
+
+  await page.goto("/insights");
+  await expect(page.getByRole("heading", { name: "Insights" })).toBeVisible();
+  await expect(page.getByText("Deterministic — no AI")).toBeVisible();
+  await expectInsightMetric(page, "visibleItems", 2);
+  await expectInsightMetric(page, "ownedItems", 2);
+  await expectInsightMetric(page, "sharedWithMe", 0);
+  await expectInsightMetric(page, "householdItems", 1);
+  await expectInsightMetric(page, "archivedItems", 1);
+
+  const explanation = page
+    .locator("summary")
+    .filter({ hasText: "How this is calculated" });
+  await explanation.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Formula v1").first()).toBeVisible();
+  await expect(
+    page.getByText("Absence from the Library does not prove absence in the real world."),
+  ).toBeVisible();
+  await expect(page.getByText("No universal person or household score exists", { exact: false })).toBeVisible();
+  await expect(page.getByText("AI-generated", { exact: false })).toHaveCount(0);
+  await expect(page.getByText("Recommendation", { exact: false })).toHaveCount(0);
+  await expect(page.getByText("Diagnosis", { exact: false })).toHaveCount(0);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/library");
+  await page.getByTestId("library-mobile-insights-link").click();
+  await expect(page).toHaveURL(/\/insights$/);
+  await expect(page.getByRole("heading", { name: "Insights" })).toBeVisible();
+});
+
+test("Insights follows Adult B authorization immediately across share and revoke", async ({
+  browser,
+  page,
+}) => {
+  const suffix = Date.now();
+  const aEmail = `adult.a.insights.${suffix}@example.test`;
+  const bEmail = `adult.b.insights.${suffix}@example.test`;
+  const privateTitle = `INSIGHT_PRIVATE_MEDICAL_TITLE_${suffix}`;
+  const privateBody = `INSIGHT_PRIVATE_MEDICAL_BODY_${suffix}`;
+
+  await registerAdultA(page, {
+    householdName: `Insight Parity Household ${suffix}`,
+    displayName: "Insight Adult A",
+    email: aEmail,
+  });
+  const invite = await page
+    .context()
+    .request.post("/api/auth/invite", { data: { email: bEmail } });
+  expect(invite.status()).toBe(201);
+  const { token } = (await invite.json()) as { token: string };
+  const contextB = await browser.newContext();
+  const pageB = await contextB.newPage();
+  await joinAdultB(pageB, token, {
+    displayName: "Insight Adult B",
+    email: bEmail,
+  });
+
+  await createLibraryItemThroughApi(page.context(), {
+    title: privateTitle,
+    body: privateBody,
+    category: "medical-reference",
+    visibility: "private",
+    sensitivity: "restricted",
+  });
+
+  await pageB.goto("/insights");
+  await expectInsightMetric(pageB, "visibleItems", 0);
+  await expectInsightMetric(pageB, "sharedWithMe", 0);
+  await expectInsightDimension(pageB, "medical-reference", 0);
+  await expect(pageB.getByText(privateTitle)).toHaveCount(0);
+  await expect(pageB.getByText(privateBody)).toHaveCount(0);
+
+  await page.goto("/library");
+  await page.getByLabel("Search Library").fill(privateTitle);
+  await expect(page.getByTestId("library-selected-detail")).toContainText(
+    privateTitle,
+  );
+  await page
+    .getByLabel("Share with adult")
+    .selectOption({ label: "Insight Adult B" });
+  await page.getByRole("button", { name: "Share" }).click();
+  await expect(
+    page.getByTestId("library-active-grants").getByText("Insight Adult B"),
+  ).toBeVisible();
+
+  await pageB.reload();
+  await expectInsightMetric(pageB, "visibleItems", 1);
+  await expectInsightMetric(pageB, "sharedWithMe", 1);
+  await expectInsightDimension(pageB, "medical-reference", 1);
+  await expect(pageB.getByText(privateTitle)).toHaveCount(0);
+  await expect(pageB.getByText(privateBody)).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Revoke" }).click();
+  await expect(page.getByText("No active sharing grants.")).toBeVisible();
+
+  await pageB.reload();
+  await expectInsightMetric(pageB, "visibleItems", 0);
+  await expectInsightMetric(pageB, "sharedWithMe", 0);
+  await expectInsightDimension(pageB, "medical-reference", 0);
+  await expect(pageB.getByText(privateTitle)).toHaveCount(0);
+  await expect(pageB.getByText(privateBody)).toHaveCount(0);
+
+  await contextB.close();
+});
+
 async function registerAdultA(
   page: Page,
   input: { householdName: string; displayName: string; email: string },
@@ -312,6 +448,49 @@ async function lookupLibraryItemId(context: BrowserContext, title: string) {
   const item = body.find((candidate) => candidate.title === title);
   expect(item).toBeTruthy();
   return item!.id;
+}
+
+async function createLibraryItemThroughApi(
+  context: BrowserContext,
+  input: {
+    title: string;
+    body: string;
+    category: string;
+    visibility: "private" | "household";
+    sensitivity: string;
+  },
+) {
+  const response = await context.request.post("/api/library/items", {
+    data: {
+      ...input,
+      shareWithUserIds: [],
+      sourceType: "manual",
+      retentionPolicy: "keep-until-archived",
+    },
+  });
+  expect(response.status()).toBe(201);
+  return (await response.json()) as { id: number };
+}
+
+async function expectInsightMetric(
+  page: Page,
+  key:
+    | "visibleItems"
+    | "ownedItems"
+    | "sharedWithMe"
+    | "householdItems"
+    | "archivedItems",
+  value: number,
+) {
+  await expect(page.getByTestId(`insight-${key}`).locator("p").first()).toHaveText(
+    String(value),
+  );
+}
+
+async function expectInsightDimension(page: Page, key: string, value: number) {
+  await expect(
+    page.getByTestId(`insight-dimension-${key}`).locator("span").last(),
+  ).toHaveText(String(value));
 }
 
 async function assertApiNotFound(

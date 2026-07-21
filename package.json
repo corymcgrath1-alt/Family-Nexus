@@ -17,6 +17,7 @@
     "test:integration": "node scripts/run-integration-tests.mjs",
     "test:e2e": "node scripts/run-e2e-tests.mjs",
     "test:connector-catalog": "pnpm --filter @workspace/api-server exec tsx --test src/lib/connector-catalog.test.ts",
+    "test:library-insights": "pnpm --filter @workspace/api-server exec tsx --test src/lib/library-insights.test.ts",
     "test:library-policy": "pnpm --filter @workspace/api-server exec tsc src/lib/library-policy.ts src/lib/library-policy.test.ts --module commonjs --target es2022 --moduleResolution node --outDir ../../tmp/library-policy-test --skipLibCheck --strict --esModuleInterop --types node && node tmp/library-policy-test/library-policy.test.js",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"

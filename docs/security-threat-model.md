@@ -29,6 +29,22 @@ This model covers the current Lighthouse web prototype and the planned consent-n
 - Connector token leakage: encrypt tokens, least scopes, revocation, refresh limits, and provider-specific review before launch.
 - Prompt/log leakage: no raw intimate prompts in logs; model provider data-flow review before sending private content.
 
+## Deterministic Insight Threats
+
+| Threat | Phase 4A control and verification |
+| --- | --- |
+| Aggregation-based inference about another adult | Aggregates operate only on rows already readable through the requesting actor's RLS context. Integration and browser tests prove private rows do not affect another adult's totals or dimensions before sharing and disappear immediately after revocation. |
+| Incorrect actor-context propagation | The API uses transaction-scoped actor settings and the aggregate verifies the database actor and household match the session actor. Missing or mismatched context fails closed. |
+| Count truncation from hidden query limits | One database aggregate covers the full RLS-visible relation with no row limit. Tests prove both the Insights API and deprecated stats route count more than 500 visible rows exactly. |
+| Accidental inclusion of deleted rows | The materialized visible-row CTE excludes `status = deleted`; integration fixtures prove deleted rows affect neither totals nor dimensions. |
+| Dimension-key leakage | Category and sensitivity keys come from registered application enums, are zero-filled, and are never generated from arbitrary database text. |
+| Raw-content leakage | The aggregate selects only ID for grant matching plus ownership, visibility, status, category, and sensitivity. Responses are strictly validated and tests reject item IDs, grant IDs, titles, bodies, source labels, and provenance. |
+| Shared caching across actors | Phase 4A has no insight cache, scheduled calculation, or background worker. Every response is calculated in the current request transaction. |
+| Incomplete Library treated as complete evidence | Coverage and uncertainty metadata state that arithmetic is exact for the snapshot while real-world source completeness is unknown and user-controlled. The UI repeats that absence in Lighthouse does not prove real-world absence. |
+| Unauthorized definition mutation | Runtime roles have SELECT only on `signal_definitions`; database tests prove INSERT, UPDATE, and DELETE fail. There is no definition mutation API. |
+| Silent formula changes | `definition_key, formula_version` is unique, definitions are migration-managed, and tests pin all seven key/version pairs. Future semantic changes must introduce a new version. |
+| Read endpoints create a behavioral trail | Definitions and Library insight GETs perform no writes and intentionally create no view audit event. Before/after protected-table counts and zero observation rows verify this boundary. |
+
 ## Current Gaps
 
 - No production identity provider or MFA.
