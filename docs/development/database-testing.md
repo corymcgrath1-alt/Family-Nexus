@@ -92,6 +92,48 @@ and audit events.
 Do not commit `.env`, database volumes, Docker state, or generated Playwright
 artifacts. Use `.env.example` for placeholders only.
 
+## Local Application Smoke Test
+
+After migrating the disposable database, start the built API with the
+restricted runtime URL in one shell:
+
+```bash
+pnpm --filter @workspace/api-server run build
+DATABASE_URL="$TEST_DATABASE_URL" \
+  NODE_ENV=development \
+  PORT=5000 \
+  SESSION_SECRET=replace-with-a-local-random-secret \
+  pnpm --filter @workspace/api-server run start
+```
+
+Start the app and its API proxy in a second shell:
+
+```bash
+PORT=5173 \
+  BASE_PATH=/ \
+  API_PROXY_TARGET=http://127.0.0.1:5000 \
+  pnpm --filter @workspace/family-app run dev
+```
+
+Open `http://127.0.0.1:5173/`. The API health check is available at
+`http://127.0.0.1:5000/api/healthz`. Keep `DATABASE_MIGRATION_URL` out of the
+API process; only controlled migration and fixture setup may use it.
+
+Production bundles can be checked independently with:
+
+```bash
+pnpm --filter @workspace/api-server run build
+PORT=5173 BASE_PATH=/ pnpm --filter @workspace/family-app run build
+pnpm run build
+```
+
+On Windows PowerShell, use `pnpm.cmd` and set the same values with `$env:NAME`.
+The lockfile retains the Windows x64 binaries for esbuild, Rollup, Lightning
+CSS, and Tailwind Oxide as transitive optional packages; they are not direct
+cross-platform dependencies. A normal `pnpm.cmd install --frozen-lockfile`
+selects them for Windows x64, while Linux installs continue to select the
+existing Linux x64 packages.
+
 ## Linux Verification
 
 The GitHub Actions workflow `.github/workflows/lighthouse-privacy.yml` runs the
