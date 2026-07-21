@@ -5,12 +5,19 @@ on:
   push:
     branches:
       - codex/lighthouse-core
+      - codex/lighthouse-connectors
       - main
     paths:
       - ".github/workflows/lighthouse-privacy.yml"
       - "artifacts/api-server/**"
       - "artifacts/family-app/**"
       - "docs/development/database-testing.md"
+      - "docs/connectors/**"
+      - "docs/architecture/lighthouse-platform-boundaries.md"
+      - "docs/roadmap.md"
+      - "lib/api-client-react/**"
+      - "lib/api-spec/**"
+      - "lib/api-zod/**"
       - "lib/db/**"
       - "package.json"
       - "playwright.config.ts"
@@ -24,6 +31,12 @@ on:
       - "artifacts/api-server/**"
       - "artifacts/family-app/**"
       - "docs/development/database-testing.md"
+      - "docs/connectors/**"
+      - "docs/architecture/lighthouse-platform-boundaries.md"
+      - "docs/roadmap.md"
+      - "lib/api-client-react/**"
+      - "lib/api-spec/**"
+      - "lib/api-zod/**"
       - "lib/db/**"
       - "package.json"
       - "playwright.config.ts"
@@ -89,6 +102,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-client
 
+      - name: Verify generated API contracts
+        run: |
+          pnpm --filter @workspace/api-spec run codegen
+          git diff --exit-code -- lib/api-client-react/src/generated lib/api-zod/src/generated
+
       - name: Install Playwright Chromium
         run: ./node_modules/.bin/playwright install --with-deps chromium
 
@@ -100,6 +118,9 @@ jobs:
 
       - name: Policy unit tests
         run: pnpm run test:library-policy
+
+      - name: Connector catalog unit tests
+        run: pnpm run test:connector-catalog
 
       - name: Database-backed API integration tests
         run: pnpm run test:integration

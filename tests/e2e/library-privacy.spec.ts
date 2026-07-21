@@ -2,7 +2,10 @@ import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 
 const password = "CorrectHorseBattery1!";
 
-test("Family Library private, shared, household, and revoked access stay bounded", async ({ browser, page }) => {
+test("Family Library private, shared, household, and revoked access stay bounded", async ({
+  browser,
+  page,
+}) => {
   const suffix = Date.now();
   const aEmail = `adult.a.e2e.${suffix}@example.test`;
   const bEmail = `adult.b.e2e.${suffix}@example.test`;
@@ -40,9 +43,20 @@ test("Family Library private, shared, household, and revoked access stay bounded
   await pageB.getByLabel("Search Library").fill(privateTitle);
   await expect(pageB.getByText(privateTitle)).toHaveCount(0);
 
-  await assertApiNotFound(pageB.context(), `/api/library/items/${privateId}`, [privateTitle, privateBody]);
-  await assertApiNotFound(pageB.context(), `/api/library/items/${privateId}/audit`, [privateTitle, privateBody]);
-  await assertApiNotFound(pageB.context(), `/api/library/items/${privateId}/export`, [privateTitle, privateBody]);
+  await assertApiNotFound(pageB.context(), `/api/library/items/${privateId}`, [
+    privateTitle,
+    privateBody,
+  ]);
+  await assertApiNotFound(
+    pageB.context(),
+    `/api/library/items/${privateId}/audit`,
+    [privateTitle, privateBody],
+  );
+  await assertApiNotFound(
+    pageB.context(),
+    `/api/library/items/${privateId}/export`,
+    [privateTitle, privateBody],
+  );
 
   await pageB.goto(`/api/library/items/${privateId}`);
   await expect(pageB.locator("body")).toContainText("Not found");
@@ -52,23 +66,39 @@ test("Family Library private, shared, household, and revoked access stay bounded
   await page.bringToFront();
   await page.goto("/library");
   await page.getByLabel("Search Library").fill(privateTitle);
-  await expect(page.getByTestId("library-selected-detail")).toContainText(privateTitle);
-  await page.getByLabel("Share with adult").selectOption({ label: "Adult B E2E" });
+  await expect(page.getByTestId("library-selected-detail")).toContainText(
+    privateTitle,
+  );
+  await page
+    .getByLabel("Share with adult")
+    .selectOption({ label: "Adult B E2E" });
   await page.getByRole("button", { name: "Share" }).click();
-  await expect(page.getByTestId("library-active-grants").getByText("Adult B E2E")).toBeVisible();
+  await expect(
+    page.getByTestId("library-active-grants").getByText("Adult B E2E"),
+  ).toBeVisible();
 
   await pageB.bringToFront();
   await pageB.goto("/library");
   await pageB.getByLabel("Search Library").fill(privateTitle);
-  await expect(pageB.getByTestId("library-selected-detail")).toContainText(privateTitle);
-  await expect(pageB.getByTestId("library-selected-body")).toContainText(privateBody);
+  await expect(pageB.getByTestId("library-selected-detail")).toContainText(
+    privateTitle,
+  );
+  await expect(pageB.getByTestId("library-selected-body")).toContainText(
+    privateBody,
+  );
   await expect(pageB.getByLabel("Export JSON")).toHaveCount(0);
   await expect(pageB.getByLabel("Archive item")).toHaveCount(0);
   await expect(pageB.getByLabel("Delete item")).toHaveCount(0);
-  await expect(pageB.getByRole("button", { name: "Save correction" })).toHaveCount(0);
+  await expect(
+    pageB.getByRole("button", { name: "Save correction" }),
+  ).toHaveCount(0);
   await expect(pageB.getByLabel("Share with adult")).toHaveCount(0);
 
-  await assertApiNotFound(pageB.context(), `/api/library/items/${privateId}/export`, [privateBody]);
+  await assertApiNotFound(
+    pageB.context(),
+    `/api/library/items/${privateId}/export`,
+    [privateBody],
+  );
   await assertMutationDenied(pageB.context(), privateId);
 
   await page.bringToFront();
@@ -76,11 +106,16 @@ test("Family Library private, shared, household, and revoked access stay bounded
   await expect(page.getByText("No active sharing grants.")).toBeVisible();
 
   await pageB.bringToFront();
-  await expect(pageB.getByText(privateBody)).toHaveCount(0, { timeout: 10_000 });
+  await expect(pageB.getByText(privateBody)).toHaveCount(0, {
+    timeout: 10_000,
+  });
   await pageB.goto("/library");
   await pageB.getByLabel("Search Library").fill(privateTitle);
   await expect(pageB.getByText(privateTitle)).toHaveCount(0);
-  await assertApiNotFound(pageB.context(), `/api/library/items/${privateId}`, [privateTitle, privateBody]);
+  await assertApiNotFound(pageB.context(), `/api/library/items/${privateId}`, [
+    privateTitle,
+    privateBody,
+  ]);
 
   await page.bringToFront();
   await page.getByLabel("Search Library").fill("");
@@ -94,16 +129,137 @@ test("Family Library private, shared, household, and revoked access stay bounded
   await pageB.bringToFront();
   await pageB.goto("/library");
   await pageB.getByLabel("Search Library").fill(householdTitle);
-  await expect(pageB.getByTestId("library-selected-detail")).toContainText(householdTitle);
-  await expect(pageB.getByTestId("library-selected-body")).toContainText(householdBody);
-  const householdDirect = await pageB.context().request.get(`/api/library/items/${householdId}`);
+  await expect(pageB.getByTestId("library-selected-detail")).toContainText(
+    householdTitle,
+  );
+  await expect(pageB.getByTestId("library-selected-body")).toContainText(
+    householdBody,
+  );
+  const householdDirect = await pageB
+    .context()
+    .request.get(`/api/library/items/${householdId}`);
   expect(householdDirect.status()).toBe(200);
 
   await page.bringToFront();
   await page.goto("/library");
   await page.getByLabel("Search Library").fill(privateTitle);
-  await expect(page.getByTestId("library-selected-detail")).toContainText(privateTitle);
-  await expect(page.getByTestId("library-selected-body")).toContainText(privateBody);
+  await expect(page.getByTestId("library-selected-detail")).toContainText(
+    privateTitle,
+  );
+  await expect(page.getByTestId("library-selected-body")).toContainText(
+    privateBody,
+  );
+
+  await contextB.close();
+});
+
+test("manual JSON import creates a private copy and unavailable connectors have no activation controls", async ({
+  browser,
+  page,
+}) => {
+  const suffix = Date.now();
+  const aEmail = `adult.a.import.${suffix}@example.test`;
+  const bEmail = `adult.b.import.${suffix}@example.test`;
+  const importedTitle = `E2E_IMPORTED_PRIVATE_TITLE_${suffix}`;
+  const importedBody = `E2E_IMPORTED_PRIVATE_BODY_${suffix}`;
+
+  await registerAdultA(page, {
+    householdName: `Import Household ${suffix}`,
+    displayName: "Import Adult A",
+    email: aEmail,
+  });
+  const invite = await page
+    .context()
+    .request.post("/api/auth/invite", { data: { email: bEmail } });
+  expect(invite.status()).toBe(201);
+  const { token } = (await invite.json()) as { token: string };
+  const contextB = await browser.newContext();
+  const pageB = await contextB.newPage();
+  await joinAdultB(pageB, token, {
+    displayName: "Import Adult B",
+    email: bEmail,
+  });
+
+  await page.goto("/library");
+  await page.getByRole("button", { name: "Import JSON" }).click();
+  await page.getByLabel("Choose JSON file").setInputFiles({
+    name: "library-item.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(
+      JSON.stringify({
+        formatVersion: "library-item.v1",
+        item: {
+          id: 999999,
+          ownerUserId: 999999,
+          householdId: 999999,
+          subjectUserId: 999999,
+          visibility: "shared",
+          status: "archived",
+          category: "instruction",
+          title: importedTitle,
+          body: importedBody,
+          sourceLabel: "E2E JSON export",
+          sensitivity: "personal",
+          retentionPolicy: "keep-until-archived",
+          grants: [
+            {
+              granteeUserId: 999999,
+              permission: "read",
+              purpose: "restore_me",
+            },
+          ],
+        },
+      }),
+    ),
+  });
+  await expect(page.getByText("library-item.json")).toBeVisible();
+  await page.getByRole("button", { name: "Preview import" }).click();
+  const warnings = page.getByTestId("library-import-warnings");
+  await expect(warnings).toContainText("new private copy");
+  await expect(warnings).toContainText("sharing grants are not restored");
+  await expect(warnings).toContainText("identifiers are not preserved");
+  await page.getByLabel("Confirm private copy").check();
+  await page.getByRole("button", { name: "Import private copy" }).click();
+
+  await expect(page.getByTestId("library-import-success")).toContainText(
+    importedTitle,
+  );
+  await expect(page.getByTestId("library-selected-detail")).toContainText(
+    importedTitle,
+  );
+  await expect(page.getByTestId("library-selected-body")).toContainText(
+    importedBody,
+  );
+  const importedId = await lookupLibraryItemId(page.context(), importedTitle);
+
+  await pageB.goto("/library");
+  await pageB.getByLabel("Search Library").fill(importedTitle);
+  await expect(pageB.getByText(importedTitle)).toHaveCount(0);
+  await assertApiNotFound(pageB.context(), `/api/library/items/${importedId}`, [
+    importedTitle,
+    importedBody,
+  ]);
+
+  await page.bringToFront();
+  await page.goto("/library");
+  await page.getByRole("button", { name: "Import JSON" }).click();
+  await page.getByLabel("Choose JSON file").setInputFiles({
+    name: "malformed.json",
+    mimeType: "application/json",
+    buffer: Buffer.from("{not-json"),
+  });
+  await expect(page.getByRole("alert")).toContainText(
+    "does not contain valid JSON",
+  );
+  await page.getByRole("button", { name: "Cancel" }).click();
+
+  await page.goto("/privacy");
+  const deferred = page.getByTestId("connector-row-apple-screen-time");
+  await expect(deferred).toContainText("deferred");
+  await expect(deferred.getByRole("button")).toHaveCount(0);
+  const prohibited = page.getByTestId("connector-row-adult-device-mdm");
+  await expect(prohibited).toContainText("prohibited");
+  await expect(prohibited.getByRole("button")).toHaveCount(0);
 
   await contextB.close();
 });
@@ -121,7 +277,11 @@ async function registerAdultA(
   await expect(page).toHaveURL(/\/$/);
 }
 
-async function joinAdultB(page: Page, token: string, input: { displayName: string; email: string }) {
+async function joinAdultB(
+  page: Page,
+  token: string,
+  input: { displayName: string; email: string },
+) {
   await page.goto(`/join/${token}`);
   await page.getByLabel("Your name").fill(input.displayName);
   await expect(page.getByLabel("Email")).toHaveValue(input.email);
@@ -138,11 +298,15 @@ async function createLibraryItem(
   await page.getByRole("button", { name: input.access }).click();
   await page.getByLabel("Details").fill(input.body);
   await page.getByRole("button", { name: "Save Library item" }).click();
-  await expect(page.getByTestId("library-selected-detail")).toContainText(input.title);
+  await expect(page.getByTestId("library-selected-detail")).toContainText(
+    input.title,
+  );
 }
 
 async function lookupLibraryItemId(context: BrowserContext, title: string) {
-  const response = await context.request.get(`/api/library/items?q=${encodeURIComponent(title)}`);
+  const response = await context.request.get(
+    `/api/library/items?q=${encodeURIComponent(title)}`,
+  );
   expect(response.status()).toBe(200);
   const body = (await response.json()) as Array<{ id: number; title: string }>;
   const item = body.find((candidate) => candidate.title === title);
@@ -150,7 +314,11 @@ async function lookupLibraryItemId(context: BrowserContext, title: string) {
   return item!.id;
 }
 
-async function assertApiNotFound(context: BrowserContext, pathname: string, tokens: string[]) {
+async function assertApiNotFound(
+  context: BrowserContext,
+  pathname: string,
+  tokens: string[],
+) {
   const response = await context.request.get(pathname);
   expect(response.status()).toBe(404);
   const text = await response.text();
@@ -162,9 +330,18 @@ async function assertApiNotFound(context: BrowserContext, pathname: string, toke
 
 async function assertMutationDenied(context: BrowserContext, itemId: number) {
   const operations = [
-    () => context.request.patch(`/api/library/items/${itemId}`, { data: { body: "unauthorized" } }),
-    () => context.request.post(`/api/library/items/${itemId}/share`, { data: { granteeUserId: 1 } }),
-    () => context.request.post(`/api/library/items/${itemId}/revoke`, { data: { granteeUserId: 1 } }),
+    () =>
+      context.request.patch(`/api/library/items/${itemId}`, {
+        data: { body: "unauthorized" },
+      }),
+    () =>
+      context.request.post(`/api/library/items/${itemId}/share`, {
+        data: { granteeUserId: 1 },
+      }),
+    () =>
+      context.request.post(`/api/library/items/${itemId}/revoke`, {
+        data: { granteeUserId: 1 },
+      }),
     () => context.request.delete(`/api/library/items/${itemId}`),
   ];
   for (const operation of operations) {

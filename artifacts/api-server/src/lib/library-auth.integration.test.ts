@@ -44,7 +44,10 @@ type FixtureState = {
 };
 
 type TestClient = {
-  request: (path: string, init?: RequestInit) => Promise<{ status: number; body: unknown; text: string }>;
+  request: (
+    path: string,
+    init?: RequestInit,
+  ) => Promise<{ status: number; body: unknown; text: string }>;
 };
 
 let server: Server;
@@ -57,7 +60,11 @@ before(async () => {
   dbModule = await import("@workspace/db");
   migrationDatabase = dbModule.createDatabase(migrationDatabaseUrl);
   await assertSchema(dbModule, migrationDatabase);
-  fixtures = await seedFixtures(dbModule, migrationDatabase.db, await import("bcryptjs"));
+  fixtures = await seedFixtures(
+    dbModule,
+    migrationDatabase.db,
+    await import("bcryptjs"),
+  );
   await dbModule.assertRestrictedRuntimeDatabase();
 
   const { default: app } = await import("../app");
@@ -115,13 +122,31 @@ test("restricted runtime RLS fails closed and isolates person-owned rows", async
     "signal_observations",
   ];
   for (const tableName of protectedTables) {
-    const rows = await dbModule.pool.query<{ count: number }>(`select count(*)::int as count from ${tableName}`);
-    assert.equal(rows.rows[0].count, 0, `${tableName} must return no rows without actor context`);
+    const rows = await dbModule.pool.query<{ count: number }>(
+      `select count(*)::int as count from ${tableName}`,
+    );
+    assert.equal(
+      rows.rows[0].count,
+      0,
+      `${tableName} must return no rows without actor context`,
+    );
   }
 
   await assert.rejects(
     dbModule.pool.query(
       "insert into personal_vaults (household_id, owner_user_id) values ($1, $2)",
+      [fixtures.adultA.householdId, fixtures.adultA.id],
+    ),
+    isRowSecurityError,
+  );
+
+  await assert.rejects(
+    dbModule.pool.query(
+      `insert into library_items (
+         household_id, owner_user_id, subject_user_id, owner_kind, visibility, category,
+         title, source_type, sensitivity, retention_policy, created_by_id, updated_by_id
+       ) values ($1, $2, $2, 'person', 'private', 'note', 'missing context', 'import',
+         'personal', 'keep-until-archived', $2, $2)`,
       [fixtures.adultA.householdId, fixtures.adultA.id],
     ),
     isRowSecurityError,
@@ -135,11 +160,27 @@ test("restricted runtime RLS fails closed and isolates person-owned rows", async
       assert(items.some((item) => item.id === fixtures.householdItem.id));
       assert(!items.some((item) => item.id === fixtures.bPrivate.id));
 
-      assert.equal((await dbModule.db.select().from(dbModule.personalVaultsTable)).length, 1);
-      assert.equal((await dbModule.db.select().from(dbModule.dataSourcesTable)).length, 1);
-      assert.equal((await dbModule.db.select().from(dbModule.dataRecordsTable)).length, 1);
-      assert.equal((await dbModule.db.select().from(dbModule.consentGrantsTable)).length, 1);
-      assert.equal((await dbModule.db.select().from(dbModule.signalObservationsTable)).length, 1);
+      assert.equal(
+        (await dbModule.db.select().from(dbModule.personalVaultsTable)).length,
+        1,
+      );
+      assert.equal(
+        (await dbModule.db.select().from(dbModule.dataSourcesTable)).length,
+        1,
+      );
+      assert.equal(
+        (await dbModule.db.select().from(dbModule.dataRecordsTable)).length,
+        1,
+      );
+      assert.equal(
+        (await dbModule.db.select().from(dbModule.consentGrantsTable)).length,
+        1,
+      );
+      assert.equal(
+        (await dbModule.db.select().from(dbModule.signalObservationsTable))
+          .length,
+        1,
+      );
     },
   );
 
@@ -157,27 +198,65 @@ test("restricted runtime RLS fails closed and isolates person-owned rows", async
       assert(!itemIds.includes(fixtures.malformedGrantItem.id));
       assert(!itemIds.includes(fixtures.cGrantItem.id));
 
-      assert.equal((await dbModule.db.select().from(dbModule.personalVaultsTable)).length, 0);
-      assert.equal((await dbModule.db.select().from(dbModule.dataSourcesTable)).length, 0);
-      assert.equal((await dbModule.db.select().from(dbModule.dataRecordsTable)).length, 0);
-      assert.equal((await dbModule.db.select().from(dbModule.consentGrantsTable)).length, 0);
-      assert.equal((await dbModule.db.select().from(dbModule.signalObservationsTable)).length, 0);
+      assert.equal(
+        (await dbModule.db.select().from(dbModule.personalVaultsTable)).length,
+        0,
+      );
+      assert.equal(
+        (await dbModule.db.select().from(dbModule.dataSourcesTable)).length,
+        0,
+      );
+      assert.equal(
+        (await dbModule.db.select().from(dbModule.dataRecordsTable)).length,
+        0,
+      );
+      assert.equal(
+        (await dbModule.db.select().from(dbModule.consentGrantsTable)).length,
+        0,
+      );
+      assert.equal(
+        (await dbModule.db.select().from(dbModule.signalObservationsTable))
+          .length,
+        0,
+      );
 
-      const spaces = await dbModule.db.select().from(dbModule.sharedSpacesTable);
-      assert.deepEqual(spaces.map((space) => space.householdId), [fixtures.adultB.householdId]);
+      const spaces = await dbModule.db
+        .select()
+        .from(dbModule.sharedSpacesTable);
+      assert.deepEqual(
+        spaces.map((space) => space.householdId),
+        [fixtures.adultB.householdId],
+      );
       const deniedSpaceUpdate = await dbModule.db
         .update(dbModule.sharedSpacesTable)
         .set({ name: "unauthorized" })
         .returning({ id: dbModule.sharedSpacesTable.id });
       assert.deepEqual(deniedSpaceUpdate, []);
 
-      const grants = await dbModule.db.select().from(dbModule.sharingGrantsTable);
-      assert.deepEqual(grants.map((grant) => grant.resourceId), [fixtures.aSharedFixture.id]);
+      const grants = await dbModule.db
+        .select()
+        .from(dbModule.sharingGrantsTable);
+      assert.deepEqual(
+        grants.map((grant) => grant.resourceId),
+        [fixtures.aSharedFixture.id],
+      );
 
-      const auditEvents = await dbModule.db.select().from(dbModule.auditEventsTable);
-      assert(!auditEvents.some((event) => event.targetId === fixtures.aPrivate.id));
-      assert(!auditEvents.some((event) => event.targetId === fixtures.aSharedFixture.id));
-      assert(auditEvents.some((event) => event.targetId === fixtures.householdItem.id));
+      const auditEvents = await dbModule.db
+        .select()
+        .from(dbModule.auditEventsTable);
+      assert(
+        !auditEvents.some((event) => event.targetId === fixtures.aPrivate.id),
+      );
+      assert(
+        !auditEvents.some(
+          (event) => event.targetId === fixtures.aSharedFixture.id,
+        ),
+      );
+      assert(
+        auditEvents.some(
+          (event) => event.targetId === fixtures.householdItem.id,
+        ),
+      );
 
       const deniedUpdate = await dbModule.db
         .update(dbModule.libraryItemsTable)
@@ -191,12 +270,13 @@ test("restricted runtime RLS fails closed and isolates person-owned rows", async
   await assert.rejects(
     dbModule.withDatabaseActor(
       { userId: fixtures.adultB.id, householdId: fixtures.adultB.householdId },
-      () => dbModule.db.insert(dbModule.dataSourcesTable).values({
-        householdId: fixtures.adultA.householdId,
-        ownerUserId: fixtures.adultA.id,
-        provider: "unauthorized",
-        connectorMode: "manual",
-      }),
+      () =>
+        dbModule.db.insert(dbModule.dataSourcesTable).values({
+          householdId: fixtures.adultA.householdId,
+          ownerUserId: fixtures.adultA.id,
+          provider: "unauthorized",
+          connectorMode: "manual",
+        }),
     ),
     isRowSecurityError,
   );
@@ -204,20 +284,23 @@ test("restricted runtime RLS fails closed and isolates person-owned rows", async
   await assert.rejects(
     dbModule.withDatabaseActor(
       { userId: fixtures.adultB.id, householdId: fixtures.adultB.householdId },
-      () => dbModule.db.insert(dbModule.sharingGrantsTable).values({
-        householdId: fixtures.adultB.householdId,
-        resourceType: "library_item",
-        resourceId: fixtures.aPrivate.id,
-        grantorUserId: fixtures.adultB.id,
-        granteeUserId: fixtures.adultC.id,
-        permission: "read",
-        purpose: "unauthorized_escalation",
-      }),
+      () =>
+        dbModule.db.insert(dbModule.sharingGrantsTable).values({
+          householdId: fixtures.adultB.householdId,
+          resourceType: "library_item",
+          resourceId: fixtures.aPrivate.id,
+          grantorUserId: fixtures.adultB.id,
+          granteeUserId: fixtures.adultC.id,
+          permission: "read",
+          purpose: "unauthorized_escalation",
+        }),
     ),
     isRowSecurityError,
   );
 
-  const referenceRows = await dbModule.db.select().from(dbModule.signalDefinitionsTable);
+  const referenceRows = await dbModule.db
+    .select()
+    .from(dbModule.signalDefinitionsTable);
   assert.equal(referenceRows.length, 1);
   await assert.rejects(
     dbModule.db.insert(dbModule.signalDefinitionsTable).values({
@@ -232,6 +315,309 @@ test("restricted runtime RLS fails closed and isolates person-owned rows", async
   );
 });
 
+test("connector catalog is authenticated, deterministic, and non-activating", async () => {
+  const anonymous = createClient();
+  assert.equal(
+    (await anonymous.request("/api/connectors/catalog")).status,
+    401,
+  );
+  assert.equal(
+    (await anonymous.request("/api/connectors/catalog/manual-family-library"))
+      .status,
+    401,
+  );
+
+  const adultA = await login(fixtures.adultA.email);
+  const list = await adultA.request("/api/connectors/catalog");
+  assert.equal(list.status, 200);
+  const payload = list.body as {
+    catalogVersion: string;
+    connectors: Array<Record<string, unknown> & { id: string; status: string }>;
+  };
+  assert.equal(payload.catalogVersion, "connector-catalog.v1");
+  assert.deepEqual(
+    payload.connectors.map((connector) => connector.id),
+    [
+      "accessibility-scraping",
+      "adult-device-mdm",
+      "android-usage-stats",
+      "apple-healthkit",
+      "apple-screen-time",
+      "google-data-portability",
+      "manual-family-library",
+      "social-media-portability",
+    ],
+  );
+  assert.deepEqual(
+    payload.connectors
+      .filter((connector) => connector.status === "available")
+      .map((connector) => connector.id),
+    ["manual-family-library"],
+  );
+  for (const connector of payload.connectors) {
+    assert.equal("activationUrl" in connector, false);
+    assert.equal("enabled" in connector, false);
+    assert.equal("credentials" in connector, false);
+  }
+
+  const detail = await adultA.request(
+    "/api/connectors/catalog/manual-family-library",
+  );
+  assert.equal(detail.status, 200);
+  assert.equal(
+    (detail.body as { connector: { id: string } }).connector.id,
+    "manual-family-library",
+  );
+  const missing = await adultA.request(
+    "/api/connectors/catalog/not-registered",
+  );
+  assert.equal(missing.status, 404);
+  assert.deepEqual(missing.body, { error: "Not found" });
+});
+
+test("manual JSON import creates one actor-owned private copy without restoring authority", async () => {
+  const adultA = await login(fixtures.adultA.email);
+  const adultB = await login(fixtures.adultB.email);
+  const importTitle = "IMPORTED_PRIVATE_TITLE_ECHO";
+  const importBody = "IMPORTED_PRIVATE_BODY_ECHO";
+  const sourceLabel = "IMPORTED_PRIVATE_SOURCE_ECHO";
+  const provenanceNote = "  safe provenance\u0000 note  ";
+  const document = {
+    connectorId: "manual-family-library",
+    formatVersion: "library-item.v1",
+    exportedAt: "2026-01-02T03:04:05.000Z",
+    item: {
+      id: fixtures.aPrivate.id,
+      householdId: fixtures.adultB.householdId + 999,
+      ownerUserId: fixtures.adultB.id,
+      subjectUserId: fixtures.adultB.id,
+      ownerKind: "household",
+      visibility: "shared",
+      category: "instruction",
+      title: importTitle,
+      body: importBody,
+      sourceType: "web",
+      sourceLabel,
+      provenance: {
+        note: provenanceNote,
+        recordedByUserId: fixtures.adultB.id,
+        correctedByUserId: fixtures.adultB.id,
+        correctedAt: "2026-01-02T03:04:05.000Z",
+      },
+      effectiveDate: "2026-01-02",
+      sensitivity: "sensitive",
+      retentionPolicy: "delete-after-date",
+      retentionDeleteAfter: "2027-01-02",
+      allowedPurposes: ["share", "profile"],
+      status: "deleted",
+      version: 99,
+      createdById: fixtures.adultB.id,
+      updatedById: fixtures.adultB.id,
+      archivedAt: "2026-01-02T03:04:05.000Z",
+      deletedAt: "2026-01-03T03:04:05.000Z",
+      createdAt: "2026-01-01T03:04:05.000Z",
+      updatedAt: "2026-01-03T03:04:05.000Z",
+      grants: [
+        {
+          id: 987654,
+          granteeUserId: fixtures.adultB.id,
+          permission: "owner",
+          purpose: "import_escalation",
+          createdAt: "2026-01-02T03:04:05.000Z",
+          revokedAt: null,
+          expiresAt: null,
+        },
+      ],
+    },
+  };
+
+  const anonymous = createClient();
+  const unauthenticatedPreview = await anonymous.request(
+    "/api/library/import/preview",
+    {
+      method: "POST",
+      body: JSON.stringify(document),
+    },
+  );
+  assert.equal(unauthenticatedPreview.status, 401);
+
+  const before = await migrationDatabase.pool.query<{
+    item_count: number;
+    grant_count: number;
+    audit_count: number;
+  }>(`select
+      (select count(*)::int from library_items) as item_count,
+      (select count(*)::int from sharing_grants) as grant_count,
+      (select count(*)::int from audit_events) as audit_count`);
+
+  const preview = await adultA.request("/api/library/import/preview", {
+    method: "POST",
+    body: JSON.stringify(document),
+  });
+  assert.equal(preview.status, 200);
+  const previewBody = preview.body as {
+    candidate: Record<string, unknown>;
+    warnings: Array<{ code: string; fields: string[] }>;
+  };
+  assert.equal(previewBody.candidate.title, importTitle);
+  assert.equal(previewBody.candidate.visibility, "private");
+  assert.equal(previewBody.candidate.status, "active");
+  assert.equal(previewBody.candidate.sourceType, "import");
+  assert.equal(previewBody.candidate.provenanceNote, "safe provenance note");
+  assert.equal("id" in previewBody.candidate, false);
+  assert(
+    previewBody.warnings.some(
+      (warning) => warning.code === "sharing-not-restored",
+    ),
+  );
+  assert(
+    previewBody.warnings.some(
+      (warning) => warning.code === "identifiers-not-preserved",
+    ),
+  );
+
+  const afterPreview = await migrationDatabase.pool.query<{
+    item_count: number;
+    grant_count: number;
+    audit_count: number;
+  }>(`select
+      (select count(*)::int from library_items) as item_count,
+      (select count(*)::int from sharing_grants) as grant_count,
+      (select count(*)::int from audit_events) as audit_count`);
+  assert.deepEqual(afterPreview.rows[0], before.rows[0]);
+
+  const unsupported = await adultA.request("/api/library/import/preview", {
+    method: "POST",
+    body: JSON.stringify({ ...document, formatVersion: "library-item.v999" }),
+  });
+  assert.equal(unsupported.status, 400);
+  assert.match(
+    (unsupported.body as { error: string }).error,
+    /library-item\.v1/,
+  );
+
+  const unknownField = await adultA.request("/api/library/import/preview", {
+    method: "POST",
+    body: JSON.stringify({ ...document, unexpectedAuthority: true }),
+  });
+  assert.equal(unknownField.status, 400);
+
+  const malformed = await adultA.request("/api/library/import/preview", {
+    method: "POST",
+    body: "{",
+  });
+  assert.equal(malformed.status, 400);
+  assert.match((malformed.body as { error: string }).error, /valid JSON/);
+
+  const oversized = await adultA.request("/api/library/import/preview", {
+    method: "POST",
+    body: JSON.stringify({
+      formatVersion: "library-item.v1",
+      item: { title: "x", body: "x".repeat(40_000) },
+    }),
+  });
+  assert.equal(oversized.status, 413);
+
+  for (const connectorId of ["apple-screen-time", "adult-device-mdm"]) {
+    const deniedConnector = await adultA.request(
+      "/api/library/import/preview",
+      {
+        method: "POST",
+        body: JSON.stringify({ ...document, connectorId }),
+      },
+    );
+    assert.equal(deniedConnector.status, 400);
+
+    const deniedCommit = await adultA.request("/api/library/import", {
+      method: "POST",
+      body: JSON.stringify({
+        confirmPrivateCopy: true,
+        document: { ...document, connectorId },
+      }),
+    });
+    assert.equal(deniedCommit.status, 400);
+  }
+
+  const unconfirmed = await adultA.request("/api/library/import", {
+    method: "POST",
+    body: JSON.stringify({ confirmPrivateCopy: false, document }),
+  });
+  assert.equal(unconfirmed.status, 400);
+
+  const committed = await adultA.request("/api/library/import", {
+    method: "POST",
+    body: JSON.stringify({ confirmPrivateCopy: true, document }),
+  });
+  assert.equal(committed.status, 201);
+  const created = committed.body as LibraryItemRow & {
+    grants: unknown[];
+    provenance: Record<string, unknown>;
+  };
+  assert.notEqual(created.id, fixtures.aPrivate.id);
+  assert.equal(created.householdId, fixtures.adultA.householdId);
+  assert.equal(created.ownerUserId, fixtures.adultA.id);
+  assert.equal(created.subjectUserId, fixtures.adultA.id);
+  assert.equal(created.createdById, fixtures.adultA.id);
+  assert.equal(created.updatedById, fixtures.adultA.id);
+  assert.equal(created.visibility, "private");
+  assert.equal(created.status, "active");
+  assert.equal(created.sourceType, "import");
+  assert.equal(created.version, 1);
+  assert.equal(created.archivedAt, null);
+  assert.equal(created.deletedAt, null);
+  assert.deepEqual(created.grants, []);
+  assert.equal(created.provenance.connectorId, "manual-family-library");
+  assert.equal(created.provenance.originalFormatVersion, "library-item.v1");
+  assert.equal(created.provenance.originalSourceLabel, sourceLabel);
+  assert.equal(created.provenance.note, "safe provenance note");
+
+  const rows = await migrationDatabase.pool.query<{
+    item_count: number;
+    total_item_count: number;
+    grant_count: number;
+    event_type: string;
+    summary: string;
+    metadata: Record<string, unknown>;
+  }>(
+    `select
+      (select count(*)::int from library_items where title = $1) as item_count,
+      (select count(*)::int from library_items) as total_item_count,
+      (select count(*)::int from sharing_grants where resource_type = 'library_item' and resource_id = $2) as grant_count,
+      event_type,
+      summary,
+      metadata
+    from audit_events
+    where target_type = 'library_item' and target_id = $2 and event_type = 'imported'`,
+    [importTitle, created.id],
+  );
+  assert.equal(rows.rows.length, 1);
+  assert.equal(rows.rows[0].item_count, 1);
+  assert.equal(rows.rows[0].total_item_count, before.rows[0].item_count + 1);
+  assert.equal(rows.rows[0].grant_count, 0);
+  assert.equal(rows.rows[0].event_type, "imported");
+  assert.equal(rows.rows[0].summary, "Library item imported");
+  assertNoTokens(rows.rows[0].metadata, [
+    importTitle,
+    importBody,
+    sourceLabel,
+    provenanceNote,
+  ]);
+  assert.deepEqual(Object.keys(rows.rows[0].metadata).sort(), [
+    "connectorId",
+    "formatVersion",
+    "sensitivity",
+    "visibility",
+  ]);
+
+  const ownerSearch = await adultA.request(
+    `/api/library/items?q=${encodeURIComponent(importTitle)}`,
+  );
+  assert.equal(ownerSearch.status, 200);
+  assertIncludesToken(ownerSearch.body, importTitle);
+  await assertNoLeakFromListSearchOrStats(adultB, importTitle, importBody);
+  await assertDenied(adultB, `/api/library/items/${created.id}`);
+});
+
 test("Adult B cannot infer Adult A private library records without an active read grant", async () => {
   const adultA = await login(fixtures.adultA.email);
   const adultB = await login(fixtures.adultB.email);
@@ -241,15 +627,23 @@ test("Adult B cannot infer Adult A private library records without an active rea
   await assertCanRead(adultA, fixtures.aPrivate, "A_PRIVATE_CONTENT_ALPHA");
   await assertCanRead(adultB, fixtures.bPrivate, "B_PRIVATE_CONTENT_BRAVO");
 
-  const deniedKnown = await adultB.request(`/api/library/items/${fixtures.aPrivate.id}`);
+  const deniedKnown = await adultB.request(
+    `/api/library/items/${fixtures.aPrivate.id}`,
+  );
   const deniedRandom = await adultB.request("/api/library/items/99999999");
   assertEquivalentNotFound(deniedKnown, deniedRandom);
 
-  await assertNoLeakFromListSearchOrStats(adultB, "A_PRIVATE_TITLE_ALPHA", "A_PRIVATE_CONTENT_ALPHA");
-  await assertNoLeakFromDirectOperations(adultB, fixtures.aPrivate.id, fixtures.adultC.id, [
+  await assertNoLeakFromListSearchOrStats(
+    adultB,
     "A_PRIVATE_TITLE_ALPHA",
     "A_PRIVATE_CONTENT_ALPHA",
-  ]);
+  );
+  await assertNoLeakFromDirectOperations(
+    adultB,
+    fixtures.aPrivate.id,
+    fixtures.adultC.id,
+    ["A_PRIVATE_TITLE_ALPHA", "A_PRIVATE_CONTENT_ALPHA"],
+  );
 
   const passportProbe = await adultB.request(
     `/api/library/items?ownerPassportId=${encodeURIComponent(fixtures.adultA.lighthousePassportId ?? "")}`,
@@ -263,16 +657,33 @@ test("Adult B cannot infer Adult A private library records without an active rea
 
   const members = await adultB.request("/api/family-members");
   assert.equal(members.status, 200);
-  assertNoTokens(members.body, [fixtures.adultA.lighthousePassportId ?? "missing-passport"]);
+  assertNoTokens(members.body, [
+    fixtures.adultA.lighthousePassportId ?? "missing-passport",
+  ]);
 
-  await assertCanRead(adultB, fixtures.aSharedFixture, "A_SHARED_FIXTURE_CONTENT");
-  const sharedByFixture = await adultB.request(`/api/library/items/${fixtures.aSharedFixture.id}`);
+  await assertCanRead(
+    adultB,
+    fixtures.aSharedFixture,
+    "A_SHARED_FIXTURE_CONTENT",
+  );
+  const sharedByFixture = await adultB.request(
+    `/api/library/items/${fixtures.aSharedFixture.id}`,
+  );
   assert.equal(sharedByFixture.status, 200);
-  assert.equal(Array.isArray((sharedByFixture.body as { grants?: unknown[] }).grants), true);
+  assert.equal(
+    Array.isArray((sharedByFixture.body as { grants?: unknown[] }).grants),
+    true,
+  );
   assert.deepEqual((sharedByFixture.body as { grants: unknown[] }).grants, []);
 
-  await assertDenied(adultC, `/api/library/items/${fixtures.aSharedFixture.id}`);
-  await assertDenied(outsider, `/api/library/items/${fixtures.aSharedFixture.id}`);
+  await assertDenied(
+    adultC,
+    `/api/library/items/${fixtures.aSharedFixture.id}`,
+  );
+  await assertDenied(
+    outsider,
+    `/api/library/items/${fixtures.aSharedFixture.id}`,
+  );
 
   for (const item of [
     fixtures.expiredGrantItem,
@@ -283,54 +694,91 @@ test("Adult B cannot infer Adult A private library records without an active rea
     await assertDenied(adultB, `/api/library/items/${item.id}`);
   }
 
-  await assertCanRead(adultB, fixtures.householdItem, "HOUSEHOLD_CONTENT_DELTA");
-  const householdAudit = await adultB.request(`/api/library/items/${fixtures.householdItem.id}/audit`);
+  await assertCanRead(
+    adultB,
+    fixtures.householdItem,
+    "HOUSEHOLD_CONTENT_DELTA",
+  );
+  const householdAudit = await adultB.request(
+    `/api/library/items/${fixtures.householdItem.id}/audit`,
+  );
   assert.equal(householdAudit.status, 200);
 
   await assertOwnerMutationBoundaries(adultA, adultB);
 
-  const share = await adultA.request(`/api/library/items/${fixtures.aPrivate.id}/share`, {
-    method: "POST",
-    body: JSON.stringify({ granteeUserId: fixtures.adultB.id, purpose: "integration_share" }),
-  });
+  const share = await adultA.request(
+    `/api/library/items/${fixtures.aPrivate.id}/share`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        granteeUserId: fixtures.adultB.id,
+        purpose: "integration_share",
+      }),
+    },
+  );
   assert.equal(share.status, 200);
 
   await assertCanRead(adultB, fixtures.aPrivate, "A_PRIVATE_CONTENT_ALPHA");
-  const searchWhileShared = await adultB.request("/api/library/items?q=A_PRIVATE_TITLE_ALPHA");
+  const searchWhileShared = await adultB.request(
+    "/api/library/items?q=A_PRIVATE_TITLE_ALPHA",
+  );
   assert.equal(searchWhileShared.status, 200);
   assert.deepEqual(
     (searchWhileShared.body as Array<{ id: number }>).map((item) => item.id),
     [fixtures.aPrivate.id],
   );
 
-  await assertNoLeakFromDirectOperations(adultB, fixtures.aPrivate.id, fixtures.adultC.id, [
-    "A_PRIVATE_CONTENT_ALPHA",
-  ], { canRead: true });
+  await assertNoLeakFromDirectOperations(
+    adultB,
+    fixtures.aPrivate.id,
+    fixtures.adultC.id,
+    ["A_PRIVATE_CONTENT_ALPHA"],
+    { canRead: true },
+  );
 
-  const ownerAudit = await adultA.request(`/api/library/items/${fixtures.aPrivate.id}/audit`);
+  const ownerAudit = await adultA.request(
+    `/api/library/items/${fixtures.aPrivate.id}/audit`,
+  );
   assert.equal(ownerAudit.status, 200);
-  assertNoTokens(ownerAudit.body, ["A_PRIVATE_TITLE_ALPHA", "A_PRIVATE_CONTENT_ALPHA"]);
+  assertNoTokens(ownerAudit.body, [
+    "A_PRIVATE_TITLE_ALPHA",
+    "A_PRIVATE_CONTENT_ALPHA",
+  ]);
 
-  const ownerExport = await adultA.request(`/api/library/items/${fixtures.aPrivate.id}/export`);
+  const ownerExport = await adultA.request(
+    `/api/library/items/${fixtures.aPrivate.id}/export`,
+  );
   assert.equal(ownerExport.status, 200);
   assertIncludesToken(ownerExport.body, "A_PRIVATE_CONTENT_ALPHA");
 
-  const revoke = await adultA.request(`/api/library/items/${fixtures.aPrivate.id}/revoke`, {
-    method: "POST",
-    body: JSON.stringify({ granteeUserId: fixtures.adultB.id }),
-  });
+  const revoke = await adultA.request(
+    `/api/library/items/${fixtures.aPrivate.id}/revoke`,
+    {
+      method: "POST",
+      body: JSON.stringify({ granteeUserId: fixtures.adultB.id }),
+    },
+  );
   assert.equal(revoke.status, 200);
 
-  const deniedAfterRevoke = await adultB.request(`/api/library/items/${fixtures.aPrivate.id}`);
+  const deniedAfterRevoke = await adultB.request(
+    `/api/library/items/${fixtures.aPrivate.id}`,
+  );
   const randomAfterRevoke = await adultB.request("/api/library/items/99999998");
   assertEquivalentNotFound(deniedAfterRevoke, randomAfterRevoke);
-  await assertNoLeakFromListSearchOrStats(adultB, "A_PRIVATE_TITLE_ALPHA", "A_PRIVATE_CONTENT_ALPHA");
+  await assertNoLeakFromListSearchOrStats(
+    adultB,
+    "A_PRIVATE_TITLE_ALPHA",
+    "A_PRIVATE_CONTENT_ALPHA",
+  );
   await assertCanRead(adultA, fixtures.aPrivate, "A_PRIVATE_CONTENT_ALPHA");
 
   const auditRows = await migrationDatabase.pool.query(
     "select summary, metadata::text as metadata from audit_events order by id",
   );
-  for (const row of auditRows.rows as Array<{ summary: string; metadata: string }>) {
+  for (const row of auditRows.rows as Array<{
+    summary: string;
+    metadata: string;
+  }>) {
     assertNoTokens(row, [
       "A_PRIVATE_TITLE_ALPHA",
       "A_PRIVATE_CONTENT_ALPHA",
@@ -392,10 +840,13 @@ async function assertSchema(dbm: DbModule, database: DatabaseInstance) {
        )`,
   );
   const nullabilityByColumn = new Map(
-    nullability.rows.map((row: { table_name: string; column_name: string; is_nullable: string }) => [
-      `${row.table_name}.${row.column_name}`,
-      row.is_nullable,
-    ]),
+    nullability.rows.map(
+      (row: {
+        table_name: string;
+        column_name: string;
+        is_nullable: string;
+      }) => [`${row.table_name}.${row.column_name}`, row.is_nullable],
+    ),
   );
   assert.equal(nullabilityByColumn.get("library_items.title"), "NO");
   assert.equal(nullabilityByColumn.get("library_items.body"), "YES");
@@ -456,13 +907,15 @@ async function assertSchema(dbm: DbModule, database: DatabaseInstance) {
      from pg_roles
      where rolname = 'lighthouse_runtime'`,
   );
-  assert.deepEqual(runtimeRole.rows, [{
-    rolcanlogin: false,
-    rolsuper: false,
-    rolcreatedb: false,
-    rolcreaterole: false,
-    rolbypassrls: false,
-  }]);
+  assert.deepEqual(runtimeRole.rows, [
+    {
+      rolcanlogin: false,
+      rolsuper: false,
+      rolcreatedb: false,
+      rolcreaterole: false,
+      rolbypassrls: false,
+    },
+  ]);
 }
 
 async function seedFixtures(
@@ -473,8 +926,14 @@ async function seedFixtures(
   const bcrypt = bcryptModule.default ?? bcryptModule;
   const passwordHash = await bcrypt.hash(password, 4);
 
-  const [household] = await database.insert(dbm.householdsTable).values({ name: "Privacy Test Household" }).returning();
-  const [otherHousehold] = await database.insert(dbm.householdsTable).values({ name: "Outsider Household" }).returning();
+  const [household] = await database
+    .insert(dbm.householdsTable)
+    .values({ name: "Privacy Test Household" })
+    .returning();
+  const [otherHousehold] = await database
+    .insert(dbm.householdsTable)
+    .values({ name: "Outsider Household" })
+    .returning();
 
   async function createUser(input: {
     householdId: number;
@@ -528,8 +987,16 @@ async function seedFixtures(
   });
 
   await database.insert(dbm.sharedSpacesTable).values([
-    { householdId: household.id, name: "Privacy Test Household Space", createdById: adultA.id },
-    { householdId: otherHousehold.id, name: "Outsider Household Space", createdById: outsider.id },
+    {
+      householdId: household.id,
+      name: "Privacy Test Household Space",
+      createdById: adultA.id,
+    },
+    {
+      householdId: otherHousehold.id,
+      name: "Outsider Household Space",
+      createdById: outsider.id,
+    },
   ]);
 
   await database.insert(dbm.personalVaultsTable).values({
@@ -603,7 +1070,15 @@ async function seedFixtures(
     body: "A_SHARED_FIXTURE_CONTENT",
     visibility: "shared",
   });
-  await createGrant(dbm, database, household.id, adultA.id, adultB.id, aSharedFixture.id, "read");
+  await createGrant(
+    dbm,
+    database,
+    household.id,
+    adultA.id,
+    adultB.id,
+    aSharedFixture.id,
+    "read",
+  );
 
   const householdItem = await createItem(dbm, database, adultA, {
     title: "HOUSEHOLD_TITLE_DELTA",
@@ -618,33 +1093,67 @@ async function seedFixtures(
     body: "A_EXPIRED_GRANT_CONTENT",
     visibility: "shared",
   });
-  await createGrant(dbm, database, household.id, adultA.id, adultB.id, expiredGrantItem.id, "read", {
-    expiresAt: new Date(Date.now() - 60_000),
-  });
+  await createGrant(
+    dbm,
+    database,
+    household.id,
+    adultA.id,
+    adultB.id,
+    expiredGrantItem.id,
+    "read",
+    {
+      expiresAt: new Date(Date.now() - 60_000),
+    },
+  );
 
   const revokedGrantItem = await createItem(dbm, database, adultA, {
     title: "A_REVOKED_GRANT_TITLE",
     body: "A_REVOKED_GRANT_CONTENT",
     visibility: "shared",
   });
-  await createGrant(dbm, database, household.id, adultA.id, adultB.id, revokedGrantItem.id, "read", {
-    revokedAt: new Date(),
-    revokedById: adultA.id,
-  });
+  await createGrant(
+    dbm,
+    database,
+    household.id,
+    adultA.id,
+    adultB.id,
+    revokedGrantItem.id,
+    "read",
+    {
+      revokedAt: new Date(),
+      revokedById: adultA.id,
+    },
+  );
 
   const malformedGrantItem = await createItem(dbm, database, adultA, {
     title: "A_MALFORMED_GRANT_TITLE",
     body: "A_MALFORMED_GRANT_CONTENT",
     visibility: "shared",
   });
-  await createGrant(dbm, database, household.id, adultA.id, adultB.id, malformedGrantItem.id, "comment");
+  await createGrant(
+    dbm,
+    database,
+    household.id,
+    adultA.id,
+    adultB.id,
+    malformedGrantItem.id,
+    "comment",
+  );
 
   const cGrantItem = await createItem(dbm, database, adultA, {
     title: "A_C_ONLY_GRANT_TITLE",
     body: "A_C_ONLY_GRANT_CONTENT",
     visibility: "shared",
   });
-  await createGrant(dbm, database, household.id, adultA.id, adultC.id, cGrantItem.id, "read");
+  await createGrant(
+    dbm,
+    database,
+    household.id,
+    adultA.id,
+    adultC.id,
+    cGrantItem.id,
+    "read",
+  );
 
   const archivableItem = await createItem(dbm, database, adultA, {
     title: "A_ARCHIVABLE_TITLE",
@@ -691,8 +1200,11 @@ async function createItem(
     .values({
       householdId: owner.householdId,
       ownerUserId: owner.id,
-      subjectUserId: input.subjectUserId === undefined ? owner.id : input.subjectUserId,
-      ownerKind: input.ownerKind ?? (visibility === "household" ? "household" : "person"),
+      subjectUserId:
+        input.subjectUserId === undefined ? owner.id : input.subjectUserId,
+      ownerKind:
+        input.ownerKind ??
+        (visibility === "household" ? "household" : "person"),
       visibility,
       category: visibility === "household" ? "household-record" : "note",
       title: input.title,
@@ -714,7 +1226,11 @@ async function createItem(
     targetId: item.id,
     eventType: "created",
     summary: "Library item created",
-    metadata: { category: item.category, visibility: item.visibility, sensitivity: item.sensitivity },
+    metadata: {
+      category: item.category,
+      visibility: item.visibility,
+      sensitivity: item.sensitivity,
+    },
   });
 
   return item;
@@ -765,7 +1281,8 @@ function createClient(): TestClient {
   return {
     async request(pathname: string, init: RequestInit = {}) {
       const headers = new Headers(init.headers);
-      if (init.body !== undefined) headers.set("content-type", "application/json");
+      if (init.body !== undefined)
+        headers.set("content-type", "application/json");
       if (cookie) headers.set("cookie", cookie);
       const response = await fetch(`${baseUrl}${pathname}`, {
         ...init,
@@ -780,7 +1297,11 @@ function createClient(): TestClient {
   };
 }
 
-async function assertCanRead(client: TestClient, item: LibraryItemRow, bodyToken: string) {
+async function assertCanRead(
+  client: TestClient,
+  item: LibraryItemRow,
+  bodyToken: string,
+) {
   const response = await client.request(`/api/library/items/${item.id}`);
   assert.equal(response.status, 200);
   assertIncludesToken(response.body, item.title);
@@ -803,7 +1324,11 @@ function assertEquivalentNotFound(
   assert.deepEqual(actual.body, { error: "Not found" });
 }
 
-async function assertNoLeakFromListSearchOrStats(client: TestClient, titleToken: string, bodyToken: string) {
+async function assertNoLeakFromListSearchOrStats(
+  client: TestClient,
+  titleToken: string,
+  bodyToken: string,
+) {
   for (const pathname of [
     "/api/library/items",
     `/api/library/items?q=${encodeURIComponent(titleToken)}`,
@@ -829,44 +1354,71 @@ async function assertNoLeakFromDirectOperations(
   const operations: Array<[string, string, unknown?]> = [
     ["GET", `/api/library/items/${itemId}/audit`],
     ["GET", `/api/library/items/${itemId}/export`],
-    ["PATCH", `/api/library/items/${itemId}`, { body: "unauthorized mutation" }],
+    [
+      "PATCH",
+      `/api/library/items/${itemId}`,
+      { body: "unauthorized mutation" },
+    ],
     ["POST", `/api/library/items/${itemId}/share`, { granteeUserId }],
     ["POST", `/api/library/items/${itemId}/revoke`, { granteeUserId }],
     ["DELETE", `/api/library/items/${itemId}`],
   ];
-  if (!options.canRead) operations.unshift(["GET", `/api/library/items/${itemId}`]);
+  if (!options.canRead)
+    operations.unshift(["GET", `/api/library/items/${itemId}`]);
 
   for (const [method, pathname, body] of operations) {
     const response = await client.request(pathname, {
       method,
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    assert.equal(response.status, 404, `${method} ${pathname} should not enumerate the record`);
+    assert.equal(
+      response.status,
+      404,
+      `${method} ${pathname} should not enumerate the record`,
+    );
     assertNoTokens(response.body, tokens);
   }
 }
 
-async function assertOwnerMutationBoundaries(owner: TestClient, nonOwner: TestClient) {
-  const archive = await owner.request(`/api/library/items/${fixtures.archivableItem.id}`, {
-    method: "PATCH",
-    body: JSON.stringify({ status: "archived" }),
-  });
+async function assertOwnerMutationBoundaries(
+  owner: TestClient,
+  nonOwner: TestClient,
+) {
+  const archive = await owner.request(
+    `/api/library/items/${fixtures.archivableItem.id}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ status: "archived" }),
+    },
+  );
   assert.equal(archive.status, 200);
   assert.equal((archive.body as { status: string }).status, "archived");
   await assertCanRead(owner, fixtures.archivableItem, "A_ARCHIVABLE_CONTENT");
-  await assertDenied(nonOwner, `/api/library/items/${fixtures.archivableItem.id}`);
+  await assertDenied(
+    nonOwner,
+    `/api/library/items/${fixtures.archivableItem.id}`,
+  );
 
-  const deniedDelete = await nonOwner.request(`/api/library/items/${fixtures.deletableItem.id}`, { method: "DELETE" });
+  const deniedDelete = await nonOwner.request(
+    `/api/library/items/${fixtures.deletableItem.id}`,
+    { method: "DELETE" },
+  );
   assert.equal(deniedDelete.status, 404);
 
-  const deleted = await owner.request(`/api/library/items/${fixtures.deletableItem.id}`, { method: "DELETE" });
+  const deleted = await owner.request(
+    `/api/library/items/${fixtures.deletableItem.id}`,
+    { method: "DELETE" },
+  );
   assert.equal(deleted.status, 204);
   await assertDenied(owner, `/api/library/items/${fixtures.deletableItem.id}`);
 
-  const correction = await owner.request(`/api/library/items/${fixtures.aPrivate.id}`, {
-    method: "PATCH",
-    body: JSON.stringify({ body: "A_PRIVATE_CONTENT_ALPHA corrected" }),
-  });
+  const correction = await owner.request(
+    `/api/library/items/${fixtures.aPrivate.id}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ body: "A_PRIVATE_CONTENT_ALPHA corrected" }),
+    },
+  );
   assert.equal(correction.status, 200);
   assertIncludesToken(correction.body, "A_PRIVATE_CONTENT_ALPHA");
 }
@@ -879,7 +1431,10 @@ function assertNoTokens(value: unknown, tokens: string[]) {
 }
 
 function assertIncludesToken(value: unknown, token: string) {
-  assert(JSON.stringify(value).includes(token), `Expected response to include token ${token}`);
+  assert(
+    JSON.stringify(value).includes(token),
+    `Expected response to include token ${token}`,
+  );
 }
 
 function isRowSecurityError(error: unknown): boolean {

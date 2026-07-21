@@ -26,6 +26,7 @@ pnpm run db:test:reset
 pnpm run db:test:down
 pnpm run test:integration
 pnpm run test:e2e
+pnpm run test:connector-catalog
 ```
 
 `db:test:up` starts a Docker container named `lighthouse-postgres-test` using
@@ -102,6 +103,7 @@ pnpm install --frozen-lockfile
 pnpm run db:test:migrate
 pnpm run typecheck
 pnpm run test:library-policy
+pnpm run test:connector-catalog
 pnpm run test:integration
 pnpm run test:e2e
 pnpm --filter @workspace/api-server run build
