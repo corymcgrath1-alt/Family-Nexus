@@ -60,6 +60,14 @@ const legacyMigrationChecks = new Map([
     rlsRelations: ["connector_connections", "connector_consents", "connector_resource_selections", "connector_sync_checkpoints", "connector_sync_runs", "connector_source_objects", "connector_source_mappings", "connector_oauth_states", "connector_credentials", "connector_audit_events"],
     policies: [["connector_source_mappings", "connector_source_mappings_owner"]],
   }],
+  ["0005_connector_phase2_review_fixes.sql", {
+    columns: [
+      ["connector_sync_checkpoints", "backfill_time_min"],
+      ["connector_sync_checkpoints", "backfill_query_fingerprint"],
+    ],
+    functions: ["lighthouse_claim_due_connector"],
+    policies: [["connector_source_mappings", "connector_source_mappings_owner"]],
+  }],
 ]);
 
 function migrationDatabaseUrl() {
