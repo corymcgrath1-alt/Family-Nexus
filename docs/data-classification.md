@@ -20,7 +20,9 @@
 
 ## Current App Constraints
 
-The current prototype does not provide end-to-end encryption, production identity assurance, or real external data connectors. It must not store banking credentials, identity documents, medical records, or production secrets until those controls are implemented and reviewed.
+The current prototype does not provide end-to-end encryption or production identity assurance. It has one read-only Google Calendar reference connector with application-layer credential encryption; production deployment still requires managed key infrastructure and provider review. It must not store banking credentials, identity documents, medical records, or unrelated production secrets until domain-specific controls are implemented and reviewed.
+
+Connector credentials are Sensitive personal security material. They never appear in browser responses, source payloads, audits, or logs and are inaccessible through direct runtime table queries. Calendar titles, descriptions, locations, organizer/attendee metadata, normalized source objects, sync checkpoints, and provider-account labels remain Personal private or Sensitive personal under the importing actor's boundary.
 
 ## Knowledge Graph Handling
 

@@ -15,10 +15,10 @@
 
 ## Current Implementation
 
-- Created/imported: manual app actions and synthetic seed data.
+- Created/imported: manual app actions, private JSON import, synthetic seed data, and selected Google Calendar events.
 - Classified: partially present in profile visibility fields; Family Library adds explicit sensitivity.
 - Provenance: partial for memories; Family Library adds source metadata.
-- Consent: not yet broadly implemented; Family Library sharing grants and revocations are the first consent-like access primitive.
+- Consent: Family Library grants and connector-specific consent/revocation are implemented; broad domain consent automation remains deferred.
 - Retention: not broadly implemented; Family Library adds retention labels and archive/delete state.
 - Export: not broadly implemented; Family Library adds JSON export for owned items.
 - Deletion propagation: documented as required, not yet implemented for all domains.
@@ -44,4 +44,16 @@ The Family Knowledge Graph implements the canonical envelope for source, classif
 8. Revoke access immediately without rewriting owner history.
 9. Perform future physical purge only through a controlled retention process that also covers projections and backups.
 
-No connector sync, graph projection, binary store, insight generation, or Passport export lifecycle runs in this milestone.
+## Google Calendar Lifecycle
+
+1. Create one-time actor/Passport-bound OAuth state and exchange an approved code using PKCE.
+2. Store the token set with authenticated encryption and record provider authorization separately from Lighthouse consent.
+3. Discover calendars without selecting them; require explicit selection and purpose confirmation.
+4. Import a bounded window page by page into owner-private source objects, graph events, and Library projections.
+5. Advance checkpoints only with the committed page; repeated delivery reconciles by source identity and checksum.
+6. Preserve user-overridden Library fields while updating source-controlled fields.
+7. Archive provider tombstones unless correction or legal hold requires detachment.
+8. On revocation, delete credentials and stop future commits before best-effort provider revocation.
+9. Apply retain, archive, or eligible-delete disposition without silently deleting corrected, detached, or legally held records.
+
+Binary storage, additional live connectors, provider notifications, insight generation, and Passport export lifecycle remain outside this milestone.

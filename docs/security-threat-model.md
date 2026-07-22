@@ -12,7 +12,7 @@ This model covers the current Lighthouse web prototype and the planned consent-n
 - Session cookies and credentials
 - Sharing and consent grants
 - Audit events
-- Future connector tokens and imports
+- Connector tokens and imported source data
 - Future AI prompts, summaries, and retained outputs
 
 ## Threats and Required Mitigations
@@ -27,6 +27,14 @@ This model covers the current Lighthouse web prototype and the planned consent-n
 - Subpoena/legal exposure: retention minimization, clear ownership, export logs, and legal review before production sensitive domains.
 - Data brokerage: no selling sensitive personal data; prohibit repurposing signals for consequential scoring.
 - Connector token leakage: encrypt tokens, least scopes, revocation, refresh limits, and provider-specific review before launch.
+- OAuth callback forgery or replay: random hashed state, encrypted PKCE verifier, ten-minute expiry, one-time consumption, actor/Passport binding, exact redirect URI, and allowlisted app redirects.
+- Token possession mistaken for consent: provider authorization leaves import pending until selected resources and a separate Lighthouse consent record are confirmed.
+- Connector IDOR and household inference: owner-only connector RLS, generic 404 responses, transaction-scoped actor context, and separate Adult A/Adult B API/browser tests.
+- Sync replay, crash, or duplicate delivery: leased execution, unique source identities, normalized checksums, page-atomic target/mapping/checkpoint commits, and idempotent retry tests.
+- Revocation race: local revocation clears consent/credentials/lease before best-effort provider revocation; every page rechecks state and consent before persistence.
+- Provider payload and audit leakage: strict minimized normalization, no raw payload retention, redacted error categories, and audit metadata key guards.
+- Overwritten user corrections: source baselines detect owner changes; detached/corrected records survive provider updates and deletion dispositions.
+- Overprivileged synchronization worker: one-row security-definer claim, separate non-superuser role, explicit lease, and immediate re-entry into actor-scoped RLS.
 - Prompt/log leakage: no raw intimate prompts in logs; model provider data-flow review before sending private content.
 - Graph traversal leakage: non-owner relationship reads require both endpoints to be currently readable; edges never grant endpoint access and traversal depth/results stay bounded.
 - Graph count and search inference: authorization is applied by PostgreSQL before text search, traversal, ranking, pagination, or aggregation; private rows cannot affect another actor's result surface.
@@ -47,9 +55,9 @@ This model covers the current Lighthouse web prototype and the planned consent-n
 - No encrypted file storage or envelope encryption.
 - No formal support-access tooling.
 - No broad deletion propagation implementation.
-- No real connector token store.
-- No graph API, graph search executor, semantic index, model runtime, or connector adapter.
-- No automated physical purge or downstream deletion propagation for graph projections.
+- No graph API, graph search executor, semantic index, or model runtime.
+- Google Calendar is the only live connector; provider notifications and continuous worker scheduling remain deployment responsibilities.
+- Connector operational-state cleanup is implemented, but no automated physical purge or downstream deletion propagation exists for graph projections.
 
 ## Reference Baselines
 

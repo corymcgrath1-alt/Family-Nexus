@@ -10,6 +10,8 @@ Default local test connections:
 ```bash
 TEST_DATABASE_MIGRATION_URL=postgres://lighthouse_test:lighthouse_test_password@127.0.0.1:55432/lighthouse_test
 TEST_DATABASE_URL=postgres://lighthouse_test_app:lighthouse_test_app_password@127.0.0.1:55432/lighthouse_test
+TEST_CONNECTOR_WORKER_DATABASE_URL=postgres://lighthouse_test_worker:lighthouse_test_worker_password@127.0.0.1:55432/lighthouse_test
+CONNECTOR_WORKER_DATABASE_URL=postgres://lighthouse_test_worker:lighthouse_test_worker_password@127.0.0.1:55432/lighthouse_test
 ```
 
 The migration URL owns schema setup and deterministic fixtures. The runtime URL
@@ -33,7 +35,8 @@ pnpm run test:knowledge-model
 `postgres:16-alpine`. `db:test:reset` drops and recreates the `public` schema,
 applies the ordered, reviewable SQL migration files under `lib/db/migrations`,
 and provisions the restricted test runtime login without storing its password
-in a migration.
+in a migration. It also provisions a distinct connector worker login that can
+claim one due connection but must re-enter the same actor-scoped RLS path.
 
 The reset and migrate scripts validate both URLs and refuse to run unless the
 resolved database host is local and the database name contains `test`. The
@@ -46,6 +49,9 @@ When `TEST_DATABASE_MIGRATION_URL` points at the default Docker database on port
 `55432`, the script uses `docker exec ... psql` inside the container. When it
 points at another local test database, such as the GitHub Actions PostgreSQL
 service on port `5432`, the runner must have the `psql` client installed.
+This same custom-URL path supports an isolated native PostgreSQL installation;
+all three URLs must target the same local database with distinct migration,
+runtime, and worker usernames.
 
 ## Runtime Row-Level Security
 
@@ -93,8 +99,17 @@ rows.
 
 `pnpm run test:knowledge-model` validates the shared registries, normalization
 bounds, connector mappings, Observation/Passport boundaries, and unified search
-contract. `pnpm run test:integration` now runs the established Library suite and
-the graph suite in separate processes with a clean migration before each.
+contract. `pnpm run test:integration` runs the Library, graph, and connector
+suites in separate processes with a clean migration before each.
+
+Migration `0004_connector_platform.sql` protects actor-owned connections,
+consents, resource selections, checkpoints, sync runs, normalized source
+objects, source mappings, OAuth state, and connector audit events with the same
+fail-closed actor context. The general runtime role has no direct credential
+table privilege. Owner-checking security-definer functions provide the narrow
+credential read/write/delete path. The non-login `lighthouse_connector_worker`
+role can only claim one due connection and apply bounded operational retention;
+the worker then re-enters the normal actor-scoped runtime path.
 
 ## Migration Contract
 
@@ -161,6 +176,8 @@ pnpm run db:test:migrate
 pnpm run typecheck
 pnpm run test:library-policy
 pnpm run test:knowledge-model
+pnpm run test:connector-platform
+pnpm run connector:worker:once
 pnpm run test:integration
 pnpm run test:e2e
 pnpm --filter @workspace/api-server run build

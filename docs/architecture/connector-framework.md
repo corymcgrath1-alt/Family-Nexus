@@ -2,7 +2,7 @@
 
 ## Boundary
 
-Connectors translate provider data into the canonical knowledge model. They do not own database tables, choose actor identity, bypass consent, or write provider payloads directly into graph metadata. The framework in `@workspace/knowledge-model` defines connector contracts; this milestone implements no connector or external call.
+Connectors translate provider data into the canonical knowledge model. They do not choose actor identity, bypass consent, or write unvalidated provider payloads directly into graph metadata. The framework in `@workspace/knowledge-model` defines provider-neutral contracts; Google Calendar is the first implemented adapter and proof.
 
 ## Versioned Definition
 
@@ -44,7 +44,7 @@ An adapter may stream batches, but each committed batch remains bounded and tran
 
 ## Authentication And Secrets
 
-The contract can describe no authentication, file upload, OAuth 2, API key, device authorization, or platform permission. It does not store any credential. A future secret store must encrypt tokens, separate secrets from graph data, scope access by connector and owner, rotate and revoke credentials, redact diagnostics, and prevent tokens from entering audit/version/search records.
+The contract distinguishes no authentication, file upload, OAuth 2, API key, device authorization, and platform permission. OAuth token sets use key-versioned AES-256-GCM and a credential table unavailable to ordinary runtime queries. Narrow actor-checked functions expose ciphertext only after ownership is established. Production key material must come from a managed envelope/KMS design; the environment keyring is the local/test mechanism.
 
 ## Health And Rate Limits
 

@@ -16,6 +16,7 @@
 | Provider or source | Categories | Mode | Status | Notes |
 | --- | --- | --- | --- | --- |
 | Manual Family Library entry | Knowledge, documents, household records | Manual upload | Implemented foundation | User supplies the record and source text manually. |
+| Google Calendar | Calendar events | Live OAuth API | Available | Read-only account identity, calendar discovery, explicit selection, bounded backfill, incremental/manual/scheduled sync, and local revocation choices. No write or attachment access. |
 | Apple Screen Time | App usage, screen time | User-authorized platform collector | Deferred | Requires Apple authorization/entitlements; does not provide universal access to another adult's phone. |
 | Android Usage Stats | App usage | User-authorized platform collector | Deferred | Requires device-user grant in Android Settings. |
 | HealthKit | Health data | User-authorized platform collector | Deferred | Fine-grained per-data-type authorization; no other-adult grant. |

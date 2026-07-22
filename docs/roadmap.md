@@ -28,9 +28,11 @@
 
 ## Phase 3: Consent and Connector Registry
 
-- Add typed connector capability registry.
-- Add safe manual import/export path before external connectors.
-- Add provider-specific terms, scope, and platform limitation records.
+- Complete: typed connector capability registry and safe manual import/export.
+- Complete: provider-neutral connection, consent, credential, resource-selection, checkpoint, sync-run, source-object, and mapping foundation.
+- Complete: read-only Google Calendar reference connector with explicit calendar selection, bounded backfill, incremental sync, correction preservation, and revocation choices.
+- Complete: restricted worker claim/maintenance authority and same-household isolation proof.
+- Deferred: additional providers, notifications/webhooks, production KMS integration, continuous scheduler deployment, and full consent lifecycle automation.
 
 ## Phase 4: Insights and Signals
 
