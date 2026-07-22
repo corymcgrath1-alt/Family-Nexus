@@ -14,7 +14,6 @@ test("Google Calendar consent, sync, correction, and revocation stay private to 
   await join(pageB, token, "Connector Adult B", bEmail);
 
   await connectAndInitialSync(page);
-  await expect(page.getByRole("status")).toContainText("2 created");
 
   await page.goto("/library");
   await page.getByLabel("Search Library").fill("Provider planning block");
@@ -24,12 +23,10 @@ test("Google Calendar consent, sync, correction, and revocation stay private to 
   await expect(page.getByText("UNSELECTED_CALENDAR_PRIVATE_EVENT")).toHaveCount(0);
 
   await page.goto("/connectors");
-  await page.getByRole("button", { name: "Sync now" }).click();
-  await expect(page.getByRole("status")).toContainText("0 created");
+  await runSyncAndExpect(page, "0 created");
   const connectionId = await currentConnectionId(page.context());
   await applyFakeScenario(page.context(), connectionId, "incremental_change");
-  await page.getByRole("button", { name: "Sync now" }).click();
-  await expect(page.getByRole("status")).toContainText("1 created, 1 updated, 1 archived");
+  await runSyncAndExpect(page, "1 created, 1 updated, 1 archived");
 
   await page.goto("/library");
   await page.getByLabel("Search Library").fill("Provider planning block updated");
@@ -41,8 +38,7 @@ test("Google Calendar consent, sync, correction, and revocation stay private to 
 
   await applyFakeScenario(page.context(), connectionId, "provider_update");
   await page.goto("/connectors");
-  await page.getByRole("button", { name: "Sync now" }).click();
-  await expect(page.getByRole("status")).toContainText("1 updated");
+  await runSyncAndExpect(page, "1 updated");
   await page.goto("/library");
   await page.getByLabel("Search Library").fill("Provider attempted another overwrite");
   await expect(page.getByTestId("library-selected-body")).toContainText(userCorrection);
@@ -132,8 +128,20 @@ async function connectAndInitialSync(page: Page) {
   await page.getByRole("checkbox", { name: /I understand the purpose/ }).check();
   await page.getByRole("button", { name: "Confirm Lighthouse consent" }).click();
   await expect(page.getByText("connection is ready to sync", { exact: false })).toBeVisible();
-  await page.getByRole("button", { name: "Sync now" }).click();
-  await expect(page.getByRole("status")).toContainText("Sync complete");
+  await runSyncAndExpect(page, "2 created");
+}
+
+async function runSyncAndExpect(page: Page, expected: string) {
+  const syncButton = page.getByRole("button", { name: "Sync now" });
+  const responsePromise = page.waitForResponse((response) => {
+    const path = new URL(response.url()).pathname;
+    return response.request().method() === "POST"
+      && /^\/api\/connectors\/connections\/[^/]+\/sync$/.test(path);
+  });
+  await syncButton.click();
+  expect((await responsePromise).status()).toBe(202);
+  await expect(syncButton).toBeEnabled({ timeout: 30_000 });
+  await expect(page.getByRole("status")).toContainText(expected);
 }
 
 async function currentConnectionId(context: BrowserContext): Promise<string> {
