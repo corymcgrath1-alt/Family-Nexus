@@ -18,6 +18,7 @@ import { decryptConnectorSecret, encryptConnectorSecret } from "./credential-cip
 import { FakeGoogleCalendarProvider } from "./fake-google-calendar-provider";
 import { checksumNormalizedEvent, normalizeGoogleCalendarEvent } from "./google-calendar-provider";
 import { createOauthRequestMaterial, hashOauthState, validateConnectorRedirectPath } from "./oauth-security";
+import { connectorConsentMaterialVersion, googleCalendarImportPolicy } from "./connector-import-policy";
 
 test("Google Calendar definition exposes only implemented read capabilities and minimum scopes", () => {
   assert.equal(googleCalendarDefinition.status, "available");
@@ -26,6 +27,20 @@ test("Google Calendar definition exposes only implemented read capabilities and 
   assert(!googleCalendarDefinition.capabilities.includes("write"));
   assert(!googleCalendarDefinition.capabilities.includes("delete_at_provider"));
   assert(!GOOGLE_CALENDAR_SCOPES.some((scope) => /gmail|contacts|drive/i.test(scope)));
+});
+
+test("effective import windows are material consent policy", () => {
+  const first = googleCalendarImportPolicy({ CONNECTOR_BACKFILL_PAST_DAYS: "30", CONNECTOR_BACKFILL_FUTURE_DAYS: "60" });
+  const sameMaterial = googleCalendarImportPolicy({ CONNECTOR_BACKFILL_PAST_DAYS: "30", CONNECTOR_BACKFILL_FUTURE_DAYS: "60", LOG_LEVEL: "debug" });
+  const changed = googleCalendarImportPolicy({ CONNECTOR_BACKFILL_PAST_DAYS: "31", CONNECTOR_BACKFILL_FUTURE_DAYS: "60" });
+  assert.equal(first.backfillPastDays, 30);
+  assert.equal(first.backfillFutureDays, 60);
+  assert.equal(first.consentPolicyFingerprint, sameMaterial.consentPolicyFingerprint);
+  assert.notEqual(first.consentPolicyFingerprint, changed.consentPolicyFingerprint);
+  assert.notEqual(
+    connectorConsentMaterialVersion({ connectorVersion: "1.0.0", selectedResourceIds: ["calendar-a"], grantedScopes: ["read"], selectedCapabilities: ["read"], consentPolicyFingerprint: first.consentPolicyFingerprint }),
+    connectorConsentMaterialVersion({ connectorVersion: "1.0.0", selectedResourceIds: ["calendar-a"], grantedScopes: ["read"], selectedCapabilities: ["read"], consentPolicyFingerprint: changed.consentPolicyFingerprint }),
+  );
 });
 
 test("connector state machine permits recovery paths and rejects unsafe resurrection", () => {
@@ -124,14 +139,16 @@ test("fake provider supports paginated initial sync and idempotent incremental c
   const provider = new FakeGoogleCalendarProvider();
   const resources = await provider.discoverResources();
   const personal = resources.find((resource) => resource.displayName === "Personal")!;
-  const first = await provider.listSourceObjects({ resource: personal, pageToken: null, cursor: null } as never);
+  const query = { resource: personal, pageToken: null, cursor: null, backfillStart: "2025-07-22T00:00:00.000Z", backfillEnd: "2027-07-22T00:00:00.000Z" };
+  const first = await provider.listSourceObjects(query as never);
   assert.equal(first.items.length, 1);
   assert(first.nextPageToken);
-  const second = await provider.listSourceObjects({ resource: personal, pageToken: first.nextPageToken, cursor: null } as never);
+  await assert.rejects(provider.listSourceObjects({ ...query, pageToken: first.nextPageToken, backfillEnd: "2027-07-23T00:00:00.000Z" } as never), (error) => error instanceof ConnectorError && error.category === "malformed_provider_response");
+  const second = await provider.listSourceObjects({ ...query, pageToken: first.nextPageToken } as never);
   assert.equal(second.items.length, 1);
   assert.equal(second.nextPageToken, null);
   assert.equal(second.nextCursor, "fake-cursor-1");
-  const unchanged = await provider.listSourceObjects({ resource: personal, pageToken: null, cursor: second.nextCursor } as never);
+  const unchanged = await provider.listSourceObjects({ ...query, pageToken: null, cursor: second.nextCursor } as never);
   assert.deepEqual(unchanged.items, []);
 });
 
