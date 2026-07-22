@@ -16,11 +16,16 @@ const runtimeUser =
   process.env.TEST_POSTGRES_RUNTIME_USER ?? "lighthouse_test_app";
 const runtimePassword =
   process.env.TEST_POSTGRES_RUNTIME_PASSWORD ?? "lighthouse_test_app_password";
+const workerUser =
+  process.env.TEST_POSTGRES_WORKER_USER ?? "lighthouse_test_worker";
+const workerPassword =
+  process.env.TEST_POSTGRES_WORKER_PASSWORD ?? "lighthouse_test_worker_password";
 const testDatabase = process.env.TEST_POSTGRES_DB ?? "lighthouse_test";
 const testHost = process.env.TEST_POSTGRES_HOST ?? "127.0.0.1";
 const testPort = process.env.TEST_POSTGRES_PORT ?? "55432";
 const defaultMigrationUrl = `postgres://${testUser}:${testPassword}@${testHost}:${testPort}/${testDatabase}`;
 const defaultRuntimeUrl = `postgres://${runtimeUser}:${runtimePassword}@${testHost}:${testPort}/${testDatabase}`;
+const defaultWorkerUrl = `postgres://${workerUser}:${workerPassword}@${testHost}:${testPort}/${testDatabase}`;
 
 function migrationDatabaseUrl() {
   return (
@@ -36,6 +41,10 @@ function runtimeDatabaseUrl() {
     process.env.DATABASE_URL ??
     defaultRuntimeUrl
   );
+}
+
+function workerDatabaseUrl() {
+  return process.env.TEST_CONNECTOR_WORKER_DATABASE_URL ?? process.env.CONNECTOR_WORKER_DATABASE_URL ?? defaultWorkerUrl;
 }
 
 function run(command, args, options = {}) {
@@ -279,6 +288,37 @@ SELECT format('GRANT lighthouse_runtime TO %I', :'runtime_role')
   });
 }
 
+async function ensureWorkerLogin(migrationUrl, runtimeUrl, workerUrl) {
+  const migration = new URL(migrationUrl);
+  const runtime = new URL(runtimeUrl);
+  const worker = new URL(workerUrl);
+  assertTestDatabaseUrl(workerUrl, "TEST_CONNECTOR_WORKER_DATABASE_URL/CONNECTOR_WORKER_DATABASE_URL");
+  if (
+    (migration.hostname === "localhost" ? "127.0.0.1" : migration.hostname) !== (worker.hostname === "localhost" ? "127.0.0.1" : worker.hostname) ||
+    (migration.port || "5432") !== (worker.port || "5432") ||
+    migration.pathname !== worker.pathname
+  ) throw new Error("Migration and connector worker URLs must target the same isolated test database.");
+  if ([migration.username, runtime.username].includes(worker.username)) throw new Error("The connector worker database role must be distinct.");
+  if (!/^[A-Za-z_][A-Za-z0-9_$]*$/.test(worker.username) || !worker.password) throw new Error("The connector worker URL must contain a valid role and password.");
+
+  const sql = String.raw`
+SELECT format(
+  'CREATE ROLE %I LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD %L',
+  :'worker_role', :'worker_password'
+)
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = :'worker_role')
+\gexec
+SELECT format(
+  'ALTER ROLE %I WITH LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD %L',
+  :'worker_role', :'worker_password'
+)
+\gexec
+SELECT format('GRANT lighthouse_runtime, lighthouse_connector_worker TO %I', :'worker_role')
+\gexec
+`;
+  await psql(migrationUrl, sql, { worker_role: worker.username, worker_password: worker.password });
+}
+
 async function migrate() {
   const migrationUrl = migrationDatabaseUrl();
   const runtimeUrl = runtimeDatabaseUrl();
@@ -291,7 +331,8 @@ async function migrate() {
   }
   await applySqlMigrations(migrationUrl);
   await ensureRuntimeLogin(migrationUrl, runtimeUrl);
-  console.log("Test database schema and restricted runtime role are ready.");
+  await ensureWorkerLogin(migrationUrl, runtimeUrl, workerDatabaseUrl());
+  console.log("Test database schema, restricted runtime role, and connector worker role are ready.");
 }
 
 async function reset() {
@@ -319,9 +360,10 @@ try {
   else if (command === "reset") await reset();
   else if (command === "url") console.log(runtimeDatabaseUrl());
   else if (command === "migration-url") console.log(migrationDatabaseUrl());
+  else if (command === "worker-url") console.log(workerDatabaseUrl());
   else {
     console.error(
-      "Usage: node scripts/db-test.mjs <up|migrate|reset|down|url|migration-url>",
+      "Usage: node scripts/db-test.mjs <up|migrate|reset|down|url|migration-url|worker-url>",
     );
     process.exitCode = 1;
   }

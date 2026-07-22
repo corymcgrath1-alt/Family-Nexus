@@ -68,6 +68,16 @@ export async function withDatabaseActor<T>(
 
 const protectedTables = [
   "audit_events",
+  "connector_audit_events",
+  "connector_connections",
+  "connector_consents",
+  "connector_credentials",
+  "connector_oauth_states",
+  "connector_resource_selections",
+  "connector_source_mappings",
+  "connector_source_objects",
+  "connector_sync_checkpoints",
+  "connector_sync_runs",
   "consent_grants",
   "data_records",
   "data_sources",

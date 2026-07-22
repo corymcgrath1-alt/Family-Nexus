@@ -1,4 +1,5 @@
 export * from "./connector";
+export * from "./connector-platform";
 export * from "./core-contracts";
 export * from "./domain-contracts";
 export * from "./registries";

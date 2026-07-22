@@ -15,3 +15,4 @@ export * from "./reflections";
 export * from "./lighthouse-core";
 export * from "./family-library";
 export * from "./knowledge-graph";
+export * from "./connector-platform";
