@@ -13,6 +13,7 @@
     "db:test:up": "node scripts/db-test.mjs up",
     "db:test:migrate": "node scripts/db-test.mjs migrate",
     "db:test:reset": "node scripts/db-test.mjs reset",
+    "test:migrations": "node scripts/db-test.mjs verify-migrations",
     "db:test:down": "node scripts/db-test.mjs down",
     "test:integration": "node scripts/run-integration-tests.mjs",
     "test:e2e": "node scripts/run-e2e-tests.mjs",

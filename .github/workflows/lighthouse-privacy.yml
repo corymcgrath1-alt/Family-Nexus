@@ -115,6 +115,9 @@ jobs:
       - name: Apply clean database migrations
         run: pnpm run db:test:migrate
 
+      - name: Verify migration upgrade and recovery
+        run: pnpm run test:migrations
+
       - name: Typecheck
         run: pnpm run typecheck
 

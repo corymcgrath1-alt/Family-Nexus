@@ -25,6 +25,7 @@ Commands:
 pnpm run db:test:up
 pnpm run db:test:migrate
 pnpm run db:test:reset
+pnpm run test:migrations
 pnpm run db:test:down
 pnpm run test:integration
 pnpm run test:e2e
@@ -114,7 +115,23 @@ the worker then re-enters the normal actor-scoped runtime path.
 ## Migration Contract
 
 The repository's test and CI migration convention is ordered SQL under
-`lib/db/migrations`. Integration tests verify the expected tables, indexes,
+`lib/db/migrations`. The migration runner records the filename, SHA-256
+checksum, and application timestamp in the migration-owner-only
+`lighthouse_admin.schema_migrations` ledger. Each migration and its ledger row
+commit in one transaction. Applied files are skipped only when their recorded
+checksum matches; edited or missing historical files and non-contiguous history
+fail closed.
+
+For databases created before the ledger, the runner verifies migration-specific
+tables, columns, indexes, functions, policies, roles, and RLS state for the
+contiguous `0000` through `0003` prefix before recording it atomically. It does
+not infer history merely because the database is non-empty. Run
+`pnpm run test:migrations` to exercise that legacy upgrade into `0004`, an
+intentional mid-migration rollback and successful retry, and checksum-drift
+rejection. `db:test:reset` removes both the application and migration-ledger
+schemas before proving the clean path.
+
+Integration tests verify the expected tables, indexes,
 unique Passport ID index, nullability, session table, RLS enablement, restricted
 runtime authority, missing-context denial, owner isolation, household behavior,
 and the current service-managed lifecycle model for Library records, grants,
@@ -173,6 +190,7 @@ clean Linux proof:
 ```bash
 pnpm install --frozen-lockfile
 pnpm run db:test:migrate
+pnpm run test:migrations
 pnpm run typecheck
 pnpm run test:library-policy
 pnpm run test:knowledge-model
