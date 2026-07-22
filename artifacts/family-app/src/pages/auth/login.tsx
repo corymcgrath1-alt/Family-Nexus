@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useLocation } from 'wouter';
 import { apiLogin } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { PRODUCT_DESCRIPTOR, PRODUCT_NAME } from '@/lib/brand';
 
 export default function LoginPage() {
   const [, navigate] = useLocation();
@@ -47,8 +48,8 @@ export default function LoginPage() {
             <line x1="22" y1="10" x2="19" y2="7" stroke="#4A7C59" strokeWidth="2" strokeLinecap="round" />
             <line x1="18" y1="19" x2="14" y2="19" stroke="#4A7C59" strokeWidth="2" strokeLinecap="round" />
           </svg>
-          <h1 className="font-serif text-3xl font-semibold text-[#1a1a1a] mt-4">Lighthouse</h1>
-          <p className="text-sm text-muted-foreground mt-1 mb-8 text-center">Your family's shared operating system</p>
+          <h1 className="font-serif text-3xl font-semibold text-[#1a1a1a] mt-4">{PRODUCT_NAME}</h1>
+          <p className="text-sm text-muted-foreground mt-1 mb-8 text-center">{PRODUCT_DESCRIPTOR}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

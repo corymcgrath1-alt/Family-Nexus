@@ -13,6 +13,8 @@ import notificationsRouter from "./notifications";
 import privacyRouter from "./privacy";
 import userExperiencesRouter from "./user-experiences";
 import todayRouter from "./today";
+import libraryRouter from "./library";
+import connectorsRouter from "./connectors";
 
 const router: IRouter = Router();
 
@@ -33,5 +35,7 @@ router.use(notificationsRouter);
 router.use(privacyRouter);
 router.use(userExperiencesRouter);
 router.use(todayRouter);
+router.use(libraryRouter);
+router.use(connectorsRouter);
 
 export default router;

@@ -1,7 +1,7 @@
 import { API_BASE } from './api-base';
 type AuthUser = import('./auth').AuthUser;
 
-async function apiFetch(path: string, init?: RequestInit) {
+export async function apiFetch(path: string, init?: RequestInit) {
   const res = await fetch(`${API_BASE}${path}`, {
     credentials: 'include',
     ...init,

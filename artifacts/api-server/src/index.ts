@@ -1,4 +1,5 @@
 import app from "./app";
+import { assertRestrictedRuntimeDatabase, pool } from "@workspace/db";
 import { logger } from "./lib/logger";
 import { checkAndSeed } from "./lib/seed";
 
@@ -13,17 +14,27 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-app.listen(port, async (err) => {
-  if (err) {
-    logger.error({ err }, "Error listening on port");
-    process.exit(1);
-  }
-  logger.info({ port }, "Server listening");
+async function start(): Promise<void> {
+  await assertRestrictedRuntimeDatabase();
 
-  // Seed demo data on first start
-  try {
-    await checkAndSeed();
-  } catch (seedErr) {
-    logger.error({ err: seedErr }, "Seed failed — continuing without demo data");
-  }
+  app.listen(port, async (err) => {
+    if (err) {
+      logger.error({ err }, "Error listening on port");
+      process.exit(1);
+    }
+    logger.info({ port }, "Server listening");
+
+    // Seed demo data on first start
+    try {
+      await checkAndSeed();
+    } catch (seedErr) {
+      logger.error({ err: seedErr }, "Seed failed - continuing without demo data");
+    }
+  });
+}
+
+start().catch((error: unknown) => {
+  logger.error({ err: error }, "API startup failed");
+  void pool.end();
+  process.exitCode = 1;
 });

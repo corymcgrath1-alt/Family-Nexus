@@ -6,6 +6,7 @@ import connectPgSimple from "connect-pg-simple";
 import { pool } from "@workspace/db";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { resolveSessionSecret } from "./lib/session-config";
 
 const app: Express = express();
 
@@ -31,7 +32,7 @@ app.use(
       pool,
     }),
     name: "lh_sid",
-    secret: process.env["SESSION_SECRET"] ?? "dev-secret-change-in-production",
+    secret: resolveSessionSecret(),
     resave: false,
     saveUninitialized: false,
     cookie: {

@@ -7,8 +7,12 @@ import { requireAuth } from "../middleware/auth";
 
 const router: IRouter = Router();
 
+function newPassportId(): string {
+  return `lhp_${randomBytes(16).toString("hex")}`;
+}
+
 function safeUser(u: typeof usersTable.$inferSelect) {
-  const { passwordHash: _pw, ...rest } = u;
+  const { passwordHash: _pw, lighthousePassportId: _passportId, ...rest } = u;
   return { ...rest, createdAt: u.createdAt.toISOString(), updatedAt: u.updatedAt.toISOString() };
 }
 
@@ -44,6 +48,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
 
   const [user] = await db.insert(usersTable).values({
     householdId: household.id,
+    lighthousePassportId: newPassportId(),
     email: email.toLowerCase(),
     passwordHash,
     displayName: displayName.trim(),
@@ -206,6 +211,7 @@ router.post("/auth/join/:token", async (req, res): Promise<void> => {
 
   const [user] = await db.insert(usersTable).values({
     householdId: invite.householdId,
+    lighthousePassportId: newPassportId(),
     email: email.toLowerCase(),
     passwordHash,
     displayName: displayName.trim(),
@@ -244,6 +250,7 @@ router.post("/auth/add-child", requireAuth, async (req, res): Promise<void> => {
 
   const [child] = await db.insert(usersTable).values({
     householdId: req.session.householdId!,
+    lighthousePassportId: newPassportId(),
     email: childEmail,
     passwordHash: "",
     displayName: displayName.trim(),

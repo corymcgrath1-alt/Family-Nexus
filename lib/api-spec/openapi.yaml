@@ -3,7 +3,7 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: FamilySpace API - private family communication and experiences platform
+  description: Lighthouse API - consent-native family intelligence operating system
 servers:
   - url: /api
     description: Base API path
@@ -30,6 +30,8 @@ tags:
     description: Shortlisted experiences
   - name: today
     description: Today dashboard summary
+  - name: connectors
+    description: User-owned connector authorization, consent, resources, and synchronization
 
 paths:
   /healthz:
@@ -609,8 +611,476 @@ paths:
               schema:
                 $ref: "#/components/schemas/TodaySummary"
 
+  /connectors/definitions:
+    get:
+      operationId: listConnectorDefinitions
+      tags: [connectors]
+      summary: List available connector definitions
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200":
+          description: Immutable connector definitions in stable key order
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ConnectorDefinition" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /connectors/connections:
+    get:
+      operationId: listConnectorConnections
+      tags: [connectors]
+      summary: List connections owned by the authenticated adult
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200":
+          description: Actor-owned connections only
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ConnectorConnection" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /connectors/connections/{connectionId}:
+    get:
+      operationId: getConnectorConnection
+      tags: [connectors]
+      summary: Get an actor-owned connection
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ConnectionId"
+      responses:
+        "200":
+          description: Connection status without credentials
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConnectorConnection" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /connectors/google-calendar/authorize:
+    post:
+      operationId: beginGoogleCalendarAuthorization
+      tags: [connectors]
+      summary: Create one-time OAuth state and begin read-only Google authorization
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BeginConnectorAuthorizationRequest" }
+      responses:
+        "201":
+          description: Authorization URL; no provider token is returned
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BeginConnectorAuthorizationResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /connectors/google-calendar/oauth/callback:
+    get:
+      operationId: completeGoogleCalendarAuthorization
+      tags: [connectors]
+      summary: Consume one-time Google OAuth state and complete provider authorization
+      description: Requires the same authenticated Lighthouse session that began authorization. Success and provider denial redirect to the configured application origin without exposing tokens.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - name: state
+          in: query
+          required: true
+          schema: { type: string, minLength: 20, maxLength: 1000 }
+        - name: code
+          in: query
+          schema: { type: string, minLength: 1, maxLength: 4000 }
+        - name: error
+          in: query
+          schema: { type: string, minLength: 1, maxLength: 200 }
+      responses:
+        "303":
+          description: Redirect to the allowlisted Lighthouse application origin
+          headers:
+            Location:
+              required: true
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /connectors/connections/{connectionId}/discover:
+    post:
+      operationId: discoverConnectorResources
+      tags: [connectors]
+      summary: Discover provider resources without selecting them
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ConnectionId"
+      responses:
+        "200":
+          description: Calendars visible to the connected provider account
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ConnectorResource" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /connectors/connections/{connectionId}/resources:
+    get:
+      operationId: listConnectorResources
+      tags: [connectors]
+      summary: List discovered resources for an actor-owned connection
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ConnectionId"
+      responses:
+        "200":
+          description: Provider resources and explicit selection state
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ConnectorResource" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      operationId: updateConnectorResources
+      tags: [connectors]
+      summary: Replace the explicit calendar selection
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ConnectionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConnectorResourceSelectionRequest" }
+      responses:
+        "200":
+          description: Updated resource selections; changed active selections require renewed consent
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ConnectorResource" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /connectors/connections/{connectionId}/consent:
+    post:
+      operationId: confirmConnectorConsent
+      tags: [connectors]
+      summary: Record explicit Lighthouse import consent after provider authorization
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ConnectionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConnectorConsentRequest" }
+      responses:
+        "201":
+          description: Active private-by-default connection
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConnectorConnection" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /connectors/connections/{connectionId}/sync:
+    post:
+      operationId: runConnectorSync
+      tags: [connectors]
+      summary: Run a bounded manual or initial synchronization
+      description: Persists each provider page atomically before advancing its checkpoint. Imported events remain private.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ConnectionId"
+      responses:
+        "202":
+          description: Completed durable sync run
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConnectorSyncRun" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { $ref: "#/components/responses/ProviderFailure" }
+
+  /connectors/connections/{connectionId}/sync-runs:
+    get:
+      operationId: listConnectorSyncRuns
+      tags: [connectors]
+      summary: List redacted sync history for an actor-owned connection
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ConnectionId"
+      responses:
+        "200":
+          description: Redacted sync runs without cursors or provider payloads
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ConnectorSyncRun" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /connectors/connections/{connectionId}/pause:
+    post:
+      operationId: pauseConnectorConnection
+      tags: [connectors]
+      summary: Pause synchronization
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ConnectionId"
+      responses:
+        "200":
+          description: Paused connection
+          content: { application/json: { schema: { $ref: "#/components/schemas/ConnectorConnection" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /connectors/connections/{connectionId}/resume:
+    post:
+      operationId: resumeConnectorConnection
+      tags: [connectors]
+      summary: Resume synchronization with active consent
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ConnectionId"
+      responses:
+        "200":
+          description: Active connection
+          content: { application/json: { schema: { $ref: "#/components/schemas/ConnectorConnection" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /connectors/connections/{connectionId}/revoke:
+    post:
+      operationId: revokeConnectorConnection
+      tags: [connectors]
+      summary: Revoke authorization and choose imported-data disposition
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/ConnectionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RevokeConnectorRequest" }
+      responses:
+        "200":
+          description: Locally revoked connection; corrected or detached records are preserved
+          content: { application/json: { schema: { $ref: "#/components/schemas/ConnectorConnection" } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
 components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: lh_sid
+  parameters:
+    ConnectionId:
+      name: connectionId
+      in: path
+      required: true
+      schema: { type: string }
+  responses:
+    BadRequest:
+      description: Invalid request
+      content: { application/json: { schema: { $ref: "#/components/schemas/ConnectorErrorResponse" } } }
+    Unauthorized:
+      description: Authentication required
+      content: { application/json: { schema: { $ref: "#/components/schemas/ConnectorErrorResponse" } } }
+    Forbidden:
+      description: Adult account required
+      content: { application/json: { schema: { $ref: "#/components/schemas/ConnectorErrorResponse" } } }
+    NotFound:
+      description: Generic non-enumerating not found response
+      content: { application/json: { schema: { $ref: "#/components/schemas/ConnectorErrorResponse" } } }
+    Conflict:
+      description: Connector state or consent conflict
+      content: { application/json: { schema: { $ref: "#/components/schemas/ConnectorErrorResponse" } } }
+    RateLimited:
+      description: Provider rate limit after bounded retries
+      content: { application/json: { schema: { $ref: "#/components/schemas/ConnectorErrorResponse" } } }
+    ProviderFailure:
+      description: Redacted provider failure
+      content: { application/json: { schema: { $ref: "#/components/schemas/ConnectorErrorResponse" } } }
   schemas:
+    ConnectorDefinition:
+      type: object
+      additionalProperties: false
+      required: [connectorKey, displayName, provider, category, version, status, authenticationModes, capabilities, sourceObjectTypes, targetEntityTypes, syncModes, minimumRequiredScopes, optionalScopes, sensitivity, documentation, importPolicy]
+      properties:
+        connectorKey: { type: string }
+        displayName: { type: string }
+        provider: { type: string }
+        category: { type: string, enum: [calendar, communications, media, health, finance, home, device, file_import] }
+        version: { type: string }
+        status: { type: string, enum: [available, deferred, unsupported, prohibited] }
+        authenticationModes: { type: array, items: { type: string, enum: [oauth2, file_upload, api_token, device_permission, local_bridge] } }
+        capabilities: { type: array, items: { type: string } }
+        sourceObjectTypes: { type: array, items: { type: string } }
+        targetEntityTypes: { type: array, items: { type: string } }
+        syncModes: { type: array, items: { type: string } }
+        minimumRequiredScopes: { type: array, items: { type: string } }
+        optionalScopes: { type: array, items: { type: string } }
+        sensitivity: { type: string, enum: [standard, personal, sensitive, restricted] }
+        documentation:
+          type: object
+          additionalProperties: false
+          required: [summary, privacySummary, permissionsSummary, backfillSummary]
+          properties:
+            summary: { type: string }
+            privacySummary: { type: string }
+            permissionsSummary: { type: string }
+            backfillSummary: { type: string }
+        importPolicy:
+          $ref: "#/components/schemas/ConnectorImportPolicy"
+
+    ConnectorImportPolicy:
+      type: object
+      additionalProperties: false
+      required: [backfillPastDays, backfillFutureDays, purpose, consentTextVersion, consentPolicyFingerprint]
+      properties:
+        backfillPastDays: { type: integer, minimum: 1, maximum: 3650 }
+        backfillFutureDays: { type: integer, minimum: 1, maximum: 3650 }
+        purpose: { type: string }
+        consentTextVersion: { type: string }
+        consentPolicyFingerprint: { type: string, pattern: "^[0-9a-f]{64}$" }
+
+    ConnectorConnection:
+      type: object
+      additionalProperties: false
+      required: [id, connectorKey, connectorVersion, displayName, provider, providerAccountLabel, state, grantedScopes, selectedCapabilities, scheduleEnabled, hasActiveConsent, lastSuccessfulSyncAt, lastAttemptedSyncAt, reconnectRequiredAt, revokedAt, latestSyncRun, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        connectorKey: { type: string }
+        connectorVersion: { type: string }
+        displayName: { type: string }
+        provider: { type: string }
+        providerAccountLabel: { type: [string, "null"] }
+        state: { type: string, enum: [pending_authorization, active, syncing, paused, degraded, reconnect_required, revoked, archived, failed] }
+        grantedScopes: { type: array, items: { type: string } }
+        selectedCapabilities: { type: array, items: { type: string } }
+        scheduleEnabled: { type: boolean }
+        hasActiveConsent: { type: boolean }
+        lastSuccessfulSyncAt: { type: [string, "null"], format: date-time }
+        lastAttemptedSyncAt: { type: [string, "null"], format: date-time }
+        reconnectRequiredAt: { type: [string, "null"], format: date-time }
+        revokedAt: { type: [string, "null"], format: date-time }
+        latestSyncRun: { oneOf: [{ $ref: "#/components/schemas/ConnectorSyncRun" }, { type: "null" }] }
+        providerRevocationConfirmed: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    ConnectorResource:
+      type: object
+      additionalProperties: false
+      required: [id, providerResourceId, resourceType, displayName, displayMetadata, selected, accessStatus, lastObservedAt]
+      properties:
+        id: { type: string }
+        providerResourceId: { type: string }
+        resourceType: { type: string, enum: [calendar] }
+        displayName: { type: string }
+        displayMetadata: { type: object, additionalProperties: true }
+        selected: { type: boolean }
+        accessStatus: { type: string, enum: [available, permission_lost, removed] }
+        lastObservedAt: { type: string, format: date-time }
+
+    ConnectorSyncRun:
+      type: object
+      additionalProperties: false
+      required: [id, triggerType, status, startedAt, finishedAt, fetchedCount, createdCount, updatedCount, unchangedCount, tombstonedCount, skippedCount, failedCount, retryCount, cursorRecoveryCount, errorCategory, errorSummary, createdAt]
+      properties:
+        id: { type: string }
+        triggerType: { type: string, enum: [initial, scheduled, manual, webhook, recovery] }
+        status: { type: string, enum: [queued, running, completed, partially_failed, failed, cancelled] }
+        startedAt: { type: [string, "null"], format: date-time }
+        finishedAt: { type: [string, "null"], format: date-time }
+        fetchedCount: { type: integer, minimum: 0 }
+        createdCount: { type: integer, minimum: 0 }
+        updatedCount: { type: integer, minimum: 0 }
+        unchangedCount: { type: integer, minimum: 0 }
+        tombstonedCount: { type: integer, minimum: 0 }
+        skippedCount: { type: integer, minimum: 0 }
+        failedCount: { type: integer, minimum: 0 }
+        retryCount: { type: integer, minimum: 0 }
+        cursorRecoveryCount: { type: integer, minimum: 0 }
+        errorCategory: { type: [string, "null"] }
+        errorSummary: { type: [string, "null"] }
+        createdAt: { type: string, format: date-time }
+
+    BeginConnectorAuthorizationRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        redirectPath: { type: string, default: /connectors }
+
+    BeginConnectorAuthorizationResponse:
+      type: object
+      additionalProperties: false
+      required: [authorizationUrl, expiresAt, passportId]
+      properties:
+        authorizationUrl: { type: string }
+        expiresAt: { type: string, format: date-time }
+        passportId: { type: string }
+
+    ConnectorResourceSelectionRequest:
+      type: object
+      additionalProperties: false
+      required: [resourceIds]
+      properties:
+        resourceIds:
+          type: array
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+          items: { type: string }
+
+    ConnectorConsentRequest:
+      type: object
+      additionalProperties: false
+      required: [confirmed, purpose, consentTextVersion, consentPolicyFingerprint]
+      properties:
+        confirmed: { type: boolean, const: true }
+        purpose: { type: string }
+        consentTextVersion: { type: string }
+        consentPolicyFingerprint: { type: string, pattern: "^[0-9a-f]{64}$" }
+
+    RevokeConnectorRequest:
+      type: object
+      additionalProperties: false
+      required: [disposition]
+      properties:
+        disposition: { type: string, enum: [retain, archive, delete] }
+
+    ConnectorErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+        category: { type: string }
+        details: { type: array, items: { type: string } }
+
     HealthStatus:
       type: object
       properties:

@@ -1,4 +1,5 @@
 export * from "./households";
+export * from "./sessions";
 export * from "./users";
 export * from "./household-invites";
 export * from "./messages";
@@ -11,3 +12,7 @@ export * from "./calendar-events";
 export * from "./planning-tasks";
 export * from "./memories";
 export * from "./reflections";
+export * from "./lighthouse-core";
+export * from "./family-library";
+export * from "./knowledge-graph";
+export * from "./connector-platform";

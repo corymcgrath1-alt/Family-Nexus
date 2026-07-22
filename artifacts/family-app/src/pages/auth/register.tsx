@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useLocation } from 'wouter';
 import { apiRegister } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { PRODUCT_NAME } from '@/lib/brand';
 
 export default function RegisterPage() {
   const [, navigate] = useLocation();
@@ -43,7 +44,7 @@ export default function RegisterPage() {
         </button>
 
         <div className="mb-8">
-          <h1 className="font-serif text-3xl font-semibold text-[#1a1a1a]">Create your Lighthouse</h1>
+          <h1 className="font-serif text-3xl font-semibold text-[#1a1a1a]">Create your {PRODUCT_NAME}</h1>
           <p className="text-sm text-muted-foreground mt-1">Set up a private space for your household.</p>
         </div>
 
@@ -58,7 +59,7 @@ export default function RegisterPage() {
               value={householdName}
               onChange={e => setHouseholdName(e.target.value)}
               required
-              placeholder="The Johnson Family"
+              placeholder="The Johnson Household"
               className="w-full px-3 py-2 border border-border rounded-md bg-white text-foreground focus:outline-none focus:ring-2 focus:ring-[#4A7C59]/30 focus:border-[#4A7C59]"
             />
           </div>
