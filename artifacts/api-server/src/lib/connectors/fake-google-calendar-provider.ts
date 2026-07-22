@@ -72,12 +72,14 @@ export class FakeGoogleCalendarProvider implements ConnectorProviderAdapter<Goog
   private events = initialEvents();
   private failure: FakeFailure = "none";
   private invalidateCursor = false;
+  private readonly pageTokenQueries = new Map<string, string>();
 
   reset(): void {
     this.revision = 1;
     this.events = initialEvents();
     this.failure = "none";
     this.invalidateCursor = false;
+    this.pageTokenQueries.clear();
   }
 
   applyScenario(scenario: "incremental_change" | "provider_update" | "cursor_invalidated" | "token_expiry" | "refresh_failure" | "rate_limit" | "outage" | "permission_loss"): void {
@@ -183,11 +185,30 @@ export class FakeGoogleCalendarProvider implements ConnectorProviderAdapter<Goog
     ];
   }
 
-  async listSourceObjects(input: { resource: ConnectorProviderResource; pageToken: string | null; cursor: string | null }) {
+  async listSourceObjects(input: {
+    resource: ConnectorProviderResource;
+    pageToken: string | null;
+    cursor: string | null;
+    backfillStart: string;
+    backfillEnd: string;
+  }) {
     this.throwConfiguredFailure();
     if (this.invalidateCursor && input.cursor) {
       this.invalidateCursor = false;
       throw new ConnectorError("cursor_invalidated", "permanent_resource", "Fake cursor invalidated.");
+    }
+
+    const queryKey = JSON.stringify({
+      resourceId: input.resource.stableId,
+      cursor: input.cursor,
+      timeMin: input.cursor ? null : input.backfillStart,
+      timeMax: input.cursor ? null : input.backfillEnd,
+      maxResults: 250,
+      showDeleted: true,
+      singleEvents: false,
+    });
+    if (input.pageToken && this.pageTokenQueries.get(input.pageToken) !== queryKey) {
+      throw new ConnectorError("malformed_provider_response", "permanent_resource", "Fake provider rejected a page token used with a different query.");
     }
 
     const cursorRevision = input.cursor ? Number(input.cursor.replace("fake-cursor-", "")) : 0;
@@ -204,9 +225,11 @@ export class FakeGoogleCalendarProvider implements ConnectorProviderAdapter<Goog
     const pageSize = 1;
     const items = values.slice(pageIndex * pageSize, (pageIndex + 1) * pageSize).map((value) => value.event);
     const hasMore = (pageIndex + 1) * pageSize < values.length;
+    const nextPageToken = hasMore ? `fake-page-${pageIndex + 1}` : null;
+    if (nextPageToken) this.pageTokenQueries.set(nextPageToken, queryKey);
     return {
       items,
-      nextPageToken: hasMore ? `fake-page-${pageIndex + 1}` : null,
+      nextPageToken,
       nextCursor: hasMore ? null : `fake-cursor-${this.revision}`,
     };
   }

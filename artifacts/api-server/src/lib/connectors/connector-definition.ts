@@ -42,7 +42,7 @@ export const connectorRegistry = createRuntimeConnectorRegistry([
       summary: "Import events from calendars you explicitly select.",
       privacySummary: "Imported events are private to your Lighthouse Passport unless you share them later.",
       permissionsSummary: "Read-only calendar list, event access, and stable Google account identification.",
-      backfillSummary: "By default Lighthouse imports one year of history and one year of future events.",
+      backfillSummary: "Lighthouse shows the effective bounded import window before consent.",
     },
   },
 ]);

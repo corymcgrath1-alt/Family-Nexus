@@ -928,7 +928,7 @@ components:
     ConnectorDefinition:
       type: object
       additionalProperties: false
-      required: [connectorKey, displayName, provider, category, version, status, authenticationModes, capabilities, sourceObjectTypes, targetEntityTypes, syncModes, minimumRequiredScopes, optionalScopes, sensitivity, documentation]
+      required: [connectorKey, displayName, provider, category, version, status, authenticationModes, capabilities, sourceObjectTypes, targetEntityTypes, syncModes, minimumRequiredScopes, optionalScopes, sensitivity, documentation, importPolicy]
       properties:
         connectorKey: { type: string }
         displayName: { type: string }
@@ -953,6 +953,19 @@ components:
             privacySummary: { type: string }
             permissionsSummary: { type: string }
             backfillSummary: { type: string }
+        importPolicy:
+          $ref: "#/components/schemas/ConnectorImportPolicy"
+
+    ConnectorImportPolicy:
+      type: object
+      additionalProperties: false
+      required: [backfillPastDays, backfillFutureDays, purpose, consentTextVersion, consentPolicyFingerprint]
+      properties:
+        backfillPastDays: { type: integer, minimum: 1, maximum: 3650 }
+        backfillFutureDays: { type: integer, minimum: 1, maximum: 3650 }
+        purpose: { type: string }
+        consentTextVersion: { type: string }
+        consentPolicyFingerprint: { type: string, pattern: "^[0-9a-f]{64}$" }
 
     ConnectorConnection:
       type: object
@@ -1046,11 +1059,12 @@ components:
     ConnectorConsentRequest:
       type: object
       additionalProperties: false
-      required: [confirmed, purpose, consentTextVersion]
+      required: [confirmed, purpose, consentTextVersion, consentPolicyFingerprint]
       properties:
         confirmed: { type: boolean, const: true }
-        purpose: { type: string, const: "Import selected calendar events into my private Lighthouse records." }
-        consentTextVersion: { type: string, const: google-calendar-consent.v1 }
+        purpose: { type: string }
+        consentTextVersion: { type: string }
+        consentPolicyFingerprint: { type: string, pattern: "^[0-9a-f]{64}$" }
 
     RevokeConnectorRequest:
       type: object

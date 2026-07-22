@@ -31,16 +31,16 @@ import { z } from "zod/v4";
 import {
   connectorRegistry,
   GOOGLE_CALENDAR_CONNECTOR_KEY,
-  GOOGLE_CALENDAR_CONSENT_PURPOSE,
-  GOOGLE_CALENDAR_CONSENT_TEXT_VERSION,
   GOOGLE_CALENDAR_SCOPES,
   googleCalendarDefinition,
 } from "./connector-definition";
 import { decryptConnectorJson, decryptConnectorSecret, encryptConnectorJson } from "./credential-cipher";
 import { getGoogleCalendarProvider, googleOauthRedirectUri } from "./provider-factory";
 import { createOauthRequestMaterial, hashOauthState, validateConnectorRedirectPath } from "./oauth-security";
+import { connectorConsentMaterialVersion, googleCalendarImportPolicy } from "./connector-import-policy";
 
 export type ConnectorActor = DatabaseActor & { role: "adult" | "child" };
+type ConnectorConsent = typeof connectorConsentsTable.$inferSelect;
 
 const tokenSetSchema = z.object({
   accessToken: z.string().min(1),
@@ -75,7 +75,15 @@ export class ConnectorAccessError extends Error {
 }
 
 export async function listConnectorDefinitions() {
-  return connectorRegistry.list();
+  const importPolicy = googleCalendarImportPolicy();
+  return connectorRegistry.list().map((definition) => ({
+    ...definition,
+    documentation: {
+      ...definition.documentation,
+      backfillSummary: `Initial import: ${importPolicy.backfillPastDays} days in the past and ${importPolicy.backfillFutureDays} days in the future.`,
+    },
+    importPolicy,
+  }));
 }
 
 export async function listConnections(actor: ConnectorActor) {
@@ -85,7 +93,28 @@ export async function listConnections(actor: ConnectorActor) {
     const runs = connections.length
       ? await db.select().from(connectorSyncRunsTable).where(inArray(connectorSyncRunsTable.connectionId, connections.map((row) => row.id)))
       : [];
-    return connections.map((connection) => formatConnection(connection, runs));
+    const consents = connections.length
+      ? await db.select().from(connectorConsentsTable).where(and(
+        inArray(connectorConsentsTable.connectionId, connections.map((row) => row.id)),
+        eq(connectorConsentsTable.status, "active"),
+      ))
+      : [];
+    const selections = connections.length
+      ? await db.select().from(connectorResourceSelectionsTable).where(and(
+        inArray(connectorResourceSelectionsTable.connectionId, connections.map((row) => row.id)),
+        eq(connectorResourceSelectionsTable.selected, true),
+        eq(connectorResourceSelectionsTable.accessStatus, "available"),
+      ))
+      : [];
+    return connections.map((connection) => formatConnection(
+      connection,
+      runs,
+      isConnectorConsentCurrent(
+        connection,
+        consents.find((consent) => consent.id === connection.activeConsentId),
+        selections.filter((selection) => selection.connectionId === connection.id).map((selection) => selection.providerResourceId),
+      ),
+    ));
   });
 }
 
@@ -94,7 +123,9 @@ export async function getConnection(actor: ConnectorActor, connectionId: string)
   return withDatabaseActor(actor, async () => {
     const connection = await requireOwnedConnection(connectionId);
     const runs = await db.select().from(connectorSyncRunsTable).where(eq(connectorSyncRunsTable.connectionId, connection.id));
-    return formatConnection(connection, runs);
+    const consent = await activeConsent(connection);
+    const selectedResourceIds = await selectedResourceIdsForConnection(connection.id);
+    return formatConnection(connection, runs, isConnectorConsentCurrent(connection, consent, selectedResourceIds));
   });
 }
 
@@ -248,7 +279,8 @@ export async function discoverConnectionResources(actor: ConnectorActor, connect
   });
   const resources = await getGoogleCalendarProvider().discoverResources(tokens);
   return withDatabaseActor(actor, async () => {
-    await requireOwnedConnection(connection.id);
+    const lockedConnection = await lockOwnedConnection(connection.id);
+    assertConnectionUsableForProvider(lockedConnection);
     const now = new Date();
     for (const resource of resources) {
       await db.insert(connectorResourceSelectionsTable).values({
@@ -288,7 +320,7 @@ export async function selectConnectionResources(actor: ConnectorActor, connectio
   assertAdultActor(actor);
   if (resourceIds.length === 0) throw new ConnectorAccessError(400, "Select at least one calendar.");
   return withDatabaseActor(actor, async () => {
-    let connection = await requireOwnedConnection(connectionId);
+    let connection = await lockOwnedConnection(connectionId);
     if (["revoked", "archived", "failed", "reconnect_required"].includes(connection.state)) throw new ConnectorAccessError(409, "This connection cannot change resources.");
     const rows = await db.select().from(connectorResourceSelectionsTable).where(eq(connectorResourceSelectionsTable.connectionId, connection.id));
     const requested = new Set(resourceIds);
@@ -320,23 +352,39 @@ export async function selectConnectionResources(actor: ConnectorActor, connectio
   });
 }
 
-export async function confirmConnectorConsent(actor: ConnectorActor, connectionId: string, input: { confirmed: boolean; purpose: string; consentTextVersion: string }) {
+export async function confirmConnectorConsent(actor: ConnectorActor, connectionId: string, input: {
+  confirmed: boolean;
+  purpose: string;
+  consentTextVersion: string;
+  consentPolicyFingerprint: string;
+}) {
   assertAdultActor(actor);
   if (!input.confirmed) throw new ConnectorAccessError(400, "Explicit Lighthouse import consent is required.");
-  if (input.purpose !== GOOGLE_CALENDAR_CONSENT_PURPOSE || input.consentTextVersion !== GOOGLE_CALENDAR_CONSENT_TEXT_VERSION) {
+  const importPolicy = googleCalendarImportPolicy();
+  if (
+    input.purpose !== importPolicy.purpose
+    || input.consentTextVersion !== importPolicy.consentTextVersion
+    || input.consentPolicyFingerprint !== importPolicy.consentPolicyFingerprint
+  ) {
     throw new ConnectorAccessError(400, "The current Lighthouse consent text must be confirmed exactly.");
   }
   return withDatabaseActor(actor, async () => {
-    let connection = await requireOwnedConnection(connectionId);
-    if (!connection.providerAccountId || !["pending_authorization", "paused"].includes(connection.state)) {
-      throw new ConnectorAccessError(409, "This connection is not ready for consent.");
-    }
+    let connection = await lockOwnedConnection(connectionId);
     const selected = await db.select().from(connectorResourceSelectionsTable).where(and(
       eq(connectorResourceSelectionsTable.connectionId, connection.id),
       eq(connectorResourceSelectionsTable.selected, true),
       eq(connectorResourceSelectionsTable.accessStatus, "available"),
     ));
     if (!selected.length) throw new ConnectorAccessError(400, "Select at least one calendar before confirming consent.");
+    const previousConsent = await activeConsent(connection);
+    const currentlyAuthorized = isConnectorConsentCurrent(connection, previousConsent, selected.map((row) => row.providerResourceId));
+    if (
+      !connection.providerAccountId
+      || currentlyAuthorized
+      || !["pending_authorization", "paused", "active", "degraded"].includes(connection.state)
+    ) {
+      throw new ConnectorAccessError(409, currentlyAuthorized ? "The current import policy is already authorized." : "This connection is not ready for consent.");
+    }
     await db.update(connectorConsentsTable).set({ status: "superseded" }).where(and(
       eq(connectorConsentsTable.connectionId, connection.id),
       eq(connectorConsentsTable.status, "active"),
@@ -354,7 +402,13 @@ export async function confirmConnectorConsent(actor: ConnectorActor, connectionI
       selectedResourceIds: selected.map((row) => row.providerResourceId),
       purpose: input.purpose,
       consentTextVersion: input.consentTextVersion,
-      materialVersion: `${connection.connectorVersion}:${selected.map((row) => row.providerResourceId).sort().join(",")}`,
+      materialVersion: connectorConsentMaterialVersion({
+        connectorVersion: connection.connectorVersion,
+        selectedResourceIds: selected.map((row) => row.providerResourceId),
+        grantedScopes: connection.grantedScopes,
+        selectedCapabilities: connection.selectedCapabilities,
+        consentPolicyFingerprint: importPolicy.consentPolicyFingerprint,
+      }),
     }).returning();
 
     let knowledgeSourceId = connection.knowledgeSourceId;
@@ -387,27 +441,33 @@ export async function confirmConnectorConsent(actor: ConnectorActor, connectionI
         dataCategories: ["calendar_event"],
         requiredScopes: [...GOOGLE_CALENDAR_SCOPES],
         collectionMode: "live-oauth-api",
-        refreshLimits: { backfillPastDays: backfillPastDays(), backfillFutureDays: backfillFutureDays(), pageSize: 250 },
+        refreshLimits: { backfillPastDays: importPolicy.backfillPastDays, backfillFutureDays: importPolicy.backfillFutureDays, pageSize: 250 },
         retentionPolicy: "user-controlled",
         allowedPurposes: ["personal_calendar_organization"],
         sensitivity: "sensitive",
         termsReviewStatus: "provider-reviewed",
       }).returning();
       dataSourceId = source.id;
+    } else {
+      await db.update(dataSourcesTable).set({
+        refreshLimits: { backfillPastDays: importPolicy.backfillPastDays, backfillFutureDays: importPolicy.backfillFutureDays, pageSize: 250 },
+        updatedAt: new Date(),
+      }).where(eq(dataSourcesTable.id, dataSourceId));
     }
 
-    connection = await transitionConnection(connection, "active", {
-      activeConsentId: consent.id,
-      scheduleEnabled: true,
-      knowledgeSourceId,
-      dataSourceId,
-    });
+    const consentPatch = { activeConsentId: consent.id, scheduleEnabled: true, knowledgeSourceId, dataSourceId };
+    if (connection.state === "active") {
+      [connection] = await db.update(connectorConnectionsTable).set({ ...consentPatch, updatedAt: new Date() })
+        .where(eq(connectorConnectionsTable.id, connection.id)).returning();
+    } else {
+      connection = await transitionConnection(connection, "active", consentPatch);
+    }
     await writeConnectorAudit(actor, connection.id, "consent_granted", "Lighthouse calendar import consent granted", {
       consentTextVersion: input.consentTextVersion,
       selectedResourceCount: selected.length,
       privateByDefault: true,
     });
-    return formatConnection(connection, []);
+    return formatConnection(connection, [], true);
   });
 }
 
@@ -422,11 +482,14 @@ export async function resumeConnection(actor: ConnectorActor, connectionId: stri
 async function changeConnectionState(actor: ConnectorActor, connectionId: string, state: "paused" | "active", eventType: "connection_paused" | "connection_resumed", summary: string, scheduleEnabled: boolean) {
   assertAdultActor(actor);
   return withDatabaseActor(actor, async () => {
-    const connection = await requireOwnedConnection(connectionId);
-    if (state === "active" && !connection.activeConsentId) throw new ConnectorAccessError(409, "Renew Lighthouse consent before resuming.");
+    const connection = await lockOwnedConnection(connectionId);
+    const consent = await activeConsent(connection);
+    const selectedResourceIds = await selectedResourceIdsForConnection(connection.id);
+    const hasCurrentConsent = isConnectorConsentCurrent(connection, consent, selectedResourceIds);
+    if (state === "active" && !hasCurrentConsent) throw new ConnectorAccessError(409, "Renew Lighthouse consent before resuming.");
     const updated = await transitionConnection(connection, state, { scheduleEnabled });
     await writeConnectorAudit(actor, connection.id, eventType, summary, { scheduleEnabled });
-    return formatConnection(updated, []);
+    return formatConnection(updated, [], hasCurrentConsent);
   });
 }
 
@@ -439,7 +502,7 @@ export async function revokeConnection(actor: ConnectorActor, connectionId: stri
   });
 
   const revokedConnection = await withDatabaseActor(actor, async () => {
-    let connection = await requireOwnedConnection(connectionId);
+    let connection = await lockOwnedConnection(connectionId);
     const now = new Date();
     await db.update(connectorConsentsTable).set({ status: "revoked", revokedAt: now }).where(and(
       eq(connectorConsentsTable.connectionId, connection.id),
@@ -472,7 +535,7 @@ export async function revokeConnection(actor: ConnectorActor, connectionId: stri
     await writeConnectorAudit(actor, connection.id, retentionEvent, disposition === "retain" ? "Imported calendar records retained" : disposition === "archive" ? "Eligible imported calendar records archived" : "Eligible imported calendar records deleted", {
       correctedRecordsPreserved: true,
     });
-    return formatConnection(connection, []);
+    return formatConnection(connection, [], false);
   });
 
   let providerRevocationConfirmed = true;
@@ -497,6 +560,17 @@ export async function requireOwnedConnection(connectionId: string): Promise<Conn
   const [connection] = await db.select().from(connectorConnectionsTable).where(eq(connectorConnectionsTable.id, connectionId));
   if (!connection) throw new ConnectorAccessError(404, "Not found");
   return connection;
+}
+
+export async function lockOwnedConnection(connectionId: string): Promise<ConnectorConnection> {
+  const result = await db.execute(sql`
+    select id
+    from public.connector_connections
+    where id = ${connectionId}::uuid
+    for update
+  `);
+  if (result.rows.length === 0) throw new ConnectorAccessError(404, "Not found");
+  return requireOwnedConnection(connectionId);
 }
 
 export async function transitionConnection(
@@ -590,17 +664,11 @@ export async function writeConnectorAudit(
 }
 
 export function backfillPastDays(): number {
-  return boundedDays(process.env.CONNECTOR_BACKFILL_PAST_DAYS, 365);
+  return googleCalendarImportPolicy().backfillPastDays;
 }
 
 export function backfillFutureDays(): number {
-  return boundedDays(process.env.CONNECTOR_BACKFILL_FUTURE_DAYS, 365);
-}
-
-function boundedDays(raw: string | undefined, fallback: number): number {
-  const value = raw === undefined ? fallback : Number(raw);
-  if (!Number.isInteger(value) || value < 1 || value > 3650) throw new Error("Connector backfill windows must be between 1 and 3650 days.");
-  return value;
+  return googleCalendarImportPolicy().backfillFutureDays;
 }
 
 function assertConnectionUsableForProvider(connection: ConnectorConnection): void {
@@ -621,7 +689,52 @@ async function listStoredResources(connectionId: string) {
   }));
 }
 
-function formatConnection(connection: ConnectorConnection, runs: Array<typeof connectorSyncRunsTable.$inferSelect>) {
+async function activeConsent(connection: ConnectorConnection): Promise<ConnectorConsent | undefined> {
+  if (!connection.activeConsentId) return undefined;
+  const [consent] = await db.select().from(connectorConsentsTable).where(and(
+    eq(connectorConsentsTable.id, connection.activeConsentId),
+    eq(connectorConsentsTable.status, "active"),
+  ));
+  return consent;
+}
+
+async function selectedResourceIdsForConnection(connectionId: string): Promise<string[]> {
+  const selections = await db.select({ providerResourceId: connectorResourceSelectionsTable.providerResourceId })
+    .from(connectorResourceSelectionsTable)
+    .where(and(
+      eq(connectorResourceSelectionsTable.connectionId, connectionId),
+      eq(connectorResourceSelectionsTable.selected, true),
+      eq(connectorResourceSelectionsTable.accessStatus, "available"),
+    ));
+  return selections.map((selection) => selection.providerResourceId);
+}
+
+export function isConnectorConsentCurrent(
+  connection: ConnectorConnection,
+  consent: ConnectorConsent | undefined,
+  selectedResourceIds: readonly string[],
+): boolean {
+  if (!consent || consent.id !== connection.activeConsentId || consent.status !== "active") return false;
+  const importPolicy = googleCalendarImportPolicy();
+  if (
+    consent.purpose !== importPolicy.purpose
+    || consent.consentTextVersion !== importPolicy.consentTextVersion
+    || [...consent.selectedResourceIds].sort().join("\0") !== [...selectedResourceIds].sort().join("\0")
+  ) return false;
+  return consent.materialVersion === connectorConsentMaterialVersion({
+    connectorVersion: connection.connectorVersion,
+    selectedResourceIds,
+    grantedScopes: connection.grantedScopes,
+    selectedCapabilities: connection.selectedCapabilities,
+    consentPolicyFingerprint: importPolicy.consentPolicyFingerprint,
+  });
+}
+
+function formatConnection(
+  connection: ConnectorConnection,
+  runs: Array<typeof connectorSyncRunsTable.$inferSelect>,
+  hasActiveConsent: boolean,
+) {
   const latestRun = [...runs].filter((run) => run.connectionId === connection.id).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
   return {
     id: connection.id,
@@ -634,7 +747,7 @@ function formatConnection(connection: ConnectorConnection, runs: Array<typeof co
     grantedScopes: connection.grantedScopes,
     selectedCapabilities: connection.selectedCapabilities,
     scheduleEnabled: connection.scheduleEnabled,
-    hasActiveConsent: Boolean(connection.activeConsentId),
+    hasActiveConsent,
     lastSuccessfulSyncAt: connection.lastSuccessfulSyncAt?.toISOString() ?? null,
     lastAttemptedSyncAt: connection.lastAttemptedSyncAt?.toISOString() ?? null,
     reconnectRequiredAt: connection.reconnectRequiredAt?.toISOString() ?? null,

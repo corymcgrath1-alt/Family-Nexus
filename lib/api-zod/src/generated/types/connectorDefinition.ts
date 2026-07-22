@@ -10,6 +10,7 @@ import type { ConnectorDefinitionCategory } from './connectorDefinitionCategory'
 import type { ConnectorDefinitionDocumentation } from './connectorDefinitionDocumentation';
 import type { ConnectorDefinitionSensitivity } from './connectorDefinitionSensitivity';
 import type { ConnectorDefinitionStatus } from './connectorDefinitionStatus';
+import type { ConnectorImportPolicy } from './connectorImportPolicy';
 
 export interface ConnectorDefinition {
   connectorKey: string;
@@ -27,4 +28,5 @@ export interface ConnectorDefinition {
   optionalScopes: string[];
   sensitivity: ConnectorDefinitionSensitivity;
   documentation: ConnectorDefinitionDocumentation;
+  importPolicy: ConnectorImportPolicy;
 }

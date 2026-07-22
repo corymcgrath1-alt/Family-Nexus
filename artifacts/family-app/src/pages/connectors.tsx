@@ -104,11 +104,12 @@ export default function ConnectorsPage() {
     setSuccess("Calendar selection saved. Confirm Lighthouse consent to activate imports.");
   });
 
-  const confirmConsent = () => connection && action("consent", async () => {
+  const confirmConsent = () => connection && google && action("consent", async () => {
     await confirmConnectorConsent(connection.id, {
       confirmed: true,
-      purpose: "Import selected calendar events into my private Lighthouse records.",
-      consentTextVersion: "google-calendar-consent.v1",
+      purpose: google.importPolicy.purpose,
+      consentTextVersion: google.importPolicy.consentTextVersion,
+      consentPolicyFingerprint: google.importPolicy.consentPolicyFingerprint,
     });
     await refreshAll();
     setConsentConfirmed(false);
@@ -134,7 +135,11 @@ export default function ConnectorsPage() {
     setSuccess("Connection revoked. No later synchronization can run.");
   });
 
-  const isPendingConsent = connection?.state === "pending_authorization" || (connection?.state === "paused" && !connection.hasActiveConsent);
+  const isPendingConsent = Boolean(
+    connection
+    && !connection.hasActiveConsent
+    && ["pending_authorization", "paused", "active", "degraded"].includes(connection.state),
+  );
   const canSync = connection && ["active", "degraded"].includes(connection.state) && connection.hasActiveConsent;
 
   return (
@@ -243,7 +248,7 @@ export default function ConnectorsPage() {
                   <p className="text-sm text-muted-foreground">I authorize Lighthouse to import current event data from the selected calendars for personal organization. Imported records become private records owned by my Passport. This does not authorize access for another adult.</p>
                   <label className="flex items-start gap-3 text-sm">
                     <input type="checkbox" className="mt-0.5" checked={consentConfirmed} onChange={(event) => setConsentConfirmed(event.target.checked)} />
-                    <span>I understand the purpose, private default, one-year past and one-year future initial window, and revocation choices.</span>
+                    <span>I understand the purpose, private default, {google.importPolicy.backfillPastDays} days of past events and {google.importPolicy.backfillFutureDays} days of future events in the initial window, and revocation choices.</span>
                   </label>
                   <button onClick={confirmConsent} disabled={!consentConfirmed || Boolean(busy)} className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">Confirm Lighthouse consent</button>
                 </div>

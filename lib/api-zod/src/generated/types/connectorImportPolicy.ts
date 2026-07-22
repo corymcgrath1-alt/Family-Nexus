@@ -6,8 +6,17 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface ConnectorConsentRequest {
-  confirmed: true;
+export interface ConnectorImportPolicy {
+  /**
+     * @minimum 1
+     * @maximum 3650
+     */
+  backfillPastDays: number;
+  /**
+     * @minimum 1
+     * @maximum 3650
+     */
+  backfillFutureDays: number;
   purpose: string;
   consentTextVersion: string;
   /** @pattern ^[0-9a-f]{64}$ */

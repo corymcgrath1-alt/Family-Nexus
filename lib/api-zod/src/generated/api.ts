@@ -1029,6 +1029,13 @@ export const GetTodaySummaryResponse = zod.object({
 /**
  * @summary List available connector definitions
  */
+export const listConnectorDefinitionsResponseImportPolicyBackfillPastDaysMax = 3650;
+
+export const listConnectorDefinitionsResponseImportPolicyBackfillFutureDaysMax = 3650;
+
+export const listConnectorDefinitionsResponseImportPolicyConsentPolicyFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
+
+
 export const ListConnectorDefinitionsResponseItem = zod.object({
   "connectorKey": zod.string(),
   "displayName": zod.string(),
@@ -1049,6 +1056,13 @@ export const ListConnectorDefinitionsResponseItem = zod.object({
   "privacySummary": zod.string(),
   "permissionsSummary": zod.string(),
   "backfillSummary": zod.string()
+}),
+  "importPolicy": zod.object({
+  "backfillPastDays": zod.number().min(1).max(listConnectorDefinitionsResponseImportPolicyBackfillPastDaysMax),
+  "backfillFutureDays": zod.number().min(1).max(listConnectorDefinitionsResponseImportPolicyBackfillFutureDaysMax),
+  "purpose": zod.string(),
+  "consentTextVersion": zod.string(),
+  "consentPolicyFingerprint": zod.string().regex(listConnectorDefinitionsResponseImportPolicyConsentPolicyFingerprintRegExp)
 })
 })
 export const ListConnectorDefinitionsResponse = zod.array(ListConnectorDefinitionsResponseItem)
@@ -1300,10 +1314,14 @@ export const ConfirmConnectorConsentParams = zod.object({
   "connectionId": zod.coerce.string()
 })
 
+export const confirmConnectorConsentBodyConsentPolicyFingerprintRegExp = new RegExp('^[0-9a-f]{64}$');
+
+
 export const ConfirmConnectorConsentBody = zod.object({
   "confirmed": zod.boolean(),
-  "purpose": zod.literal("Import selected calendar events into my private Lighthouse records."),
-  "consentTextVersion": zod.literal("google-calendar-consent.v1")
+  "purpose": zod.string(),
+  "consentTextVersion": zod.string(),
+  "consentPolicyFingerprint": zod.string().regex(confirmConnectorConsentBodyConsentPolicyFingerprintRegExp)
 })
 
 export const confirmConnectorConsentResponseLatestSyncRunOneFetchedCountMin = 0;

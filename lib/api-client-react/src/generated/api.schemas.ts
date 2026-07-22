@@ -57,6 +57,23 @@ export type ConnectorDefinitionDocumentation = {
   backfillSummary: string;
 };
 
+export interface ConnectorImportPolicy {
+  /**
+     * @minimum 1
+     * @maximum 3650
+     */
+  backfillPastDays: number;
+  /**
+     * @minimum 1
+     * @maximum 3650
+     */
+  backfillFutureDays: number;
+  purpose: string;
+  consentTextVersion: string;
+  /** @pattern ^[0-9a-f]{64}$ */
+  consentPolicyFingerprint: string;
+}
+
 export interface ConnectorDefinition {
   connectorKey: string;
   displayName: string;
@@ -73,6 +90,7 @@ export interface ConnectorDefinition {
   optionalScopes: string[];
   sensitivity: ConnectorDefinitionSensitivity;
   documentation: ConnectorDefinitionDocumentation;
+  importPolicy: ConnectorImportPolicy;
 }
 
 export type ConnectorConnectionState = typeof ConnectorConnectionState[keyof typeof ConnectorConnectionState];
@@ -220,12 +238,13 @@ export interface ConnectorResourceSelectionRequest {
   resourceIds: string[];
 }
 
-export const ConnectorConsentRequestValue = {
-  confirmed: true,
-  purpose: 'Import selected calendar events into my private Lighthouse records.',
-  consentTextVersion: 'google-calendar-consent.v1',
-} as const;
-export type ConnectorConsentRequest = typeof ConnectorConsentRequestValue;
+export interface ConnectorConsentRequest {
+  confirmed: true;
+  purpose: string;
+  consentTextVersion: string;
+  /** @pattern ^[0-9a-f]{64}$ */
+  consentPolicyFingerprint: string;
+}
 
 export type RevokeConnectorRequestDisposition = typeof RevokeConnectorRequestDisposition[keyof typeof RevokeConnectorRequestDisposition];
 

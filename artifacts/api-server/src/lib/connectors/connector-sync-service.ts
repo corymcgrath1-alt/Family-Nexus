@@ -22,7 +22,7 @@ import {
   type ConnectorTokenSet,
 } from "@workspace/knowledge-model";
 import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { GOOGLE_CALENDAR_CONNECTOR_KEY, googleCalendarDefinition } from "./connector-definition";
 import {
@@ -31,6 +31,8 @@ import {
   backfillFutureDays,
   backfillPastDays,
   getFreshCredential,
+  isConnectorConsentCurrent,
+  lockOwnedConnection,
   requireOwnedConnection,
   transitionConnection,
   writeConnectorAudit,
@@ -62,6 +64,16 @@ type SyncPageContext = {
   items: Map<number, typeof libraryItemsTable.$inferSelect>;
   entities: Map<string, typeof knowledgeEntitiesTable.$inferSelect>;
 };
+type SyncOptions = {
+  sleep?: (milliseconds: number) => Promise<void>;
+  random?: () => number;
+  preclaimedLeaseId?: string;
+  beforePagePersist?: () => Promise<void>;
+  afterPagePersist?: () => Promise<void>;
+};
+
+const GOOGLE_EVENTS_QUERY_VERSION = "google-calendar-events-query.v1";
+const GOOGLE_EVENTS_PAGE_SIZE = 250;
 
 const emptyCounts = (): SyncCounts => ({
   fetchedCount: 0,
@@ -79,7 +91,7 @@ export async function runConnectorSync(
   actor: ConnectorActor,
   connectionId: string,
   requestedTrigger: "manual" | "scheduled" = "manual",
-  options: { sleep?: (milliseconds: number) => Promise<void>; random?: () => number; preclaimedLeaseId?: string } = {},
+  options: SyncOptions = {},
 ) {
   assertAdultActor(actor);
   const sleep = options.sleep ?? ((milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
@@ -109,6 +121,9 @@ export async function runConnectorSync(
     const consentResources = new Set(consent.selectedResourceIds);
     if (selections.some((selection) => !consentResources.has(selection.providerResourceId)) || consentResources.size !== selections.length) {
       throw new ConnectorAccessError(409, "Calendar selection changed. Renew Lighthouse consent before synchronizing.");
+    }
+    if (!isConnectorConsentCurrent(connection, consent, selections.map((selection) => selection.providerResourceId))) {
+      throw new ConnectorAccessError(409, "The import policy changed. Renew Lighthouse consent before synchronizing.");
     }
 
     const leaseCondition = options.preclaimedLeaseId
@@ -168,7 +183,12 @@ export async function runConnectorSync(
   const counts = emptyCounts();
   try {
     for (const selection of acquired.selections) {
-      await syncResource(actor, acquired.connection, selection, acquired.runId, leaseId, acquired.tokens, counts, { sleep, random });
+      await syncResource(actor, acquired.connection, selection, acquired.runId, leaseId, acquired.tokens, counts, {
+        sleep,
+        random,
+        beforePagePersist: options.beforePagePersist,
+        afterPagePersist: options.afterPagePersist,
+      });
     }
     return await finishSync(actor, acquired.connection.id, acquired.runId, leaseId, counts, null);
   } catch (error) {
@@ -185,7 +205,12 @@ async function syncResource(
   leaseId: string,
   tokens: ConnectorTokenSet,
   counts: SyncCounts,
-  timing: { sleep: (milliseconds: number) => Promise<void>; random: () => number },
+  timing: {
+    sleep: (milliseconds: number) => Promise<void>;
+    random: () => number;
+    beforePagePersist?: () => Promise<void>;
+    afterPagePersist?: () => Promise<void>;
+  },
 ): Promise<void> {
   const provider = getGoogleCalendarProvider();
   const resource: ConnectorProviderResource = {
@@ -195,6 +220,8 @@ async function syncResource(
     metadata: selection.displayMetadata as Record<string, string | boolean | null>,
   };
   let checkpoint = await withDatabaseActor(actor, async () => {
+    await lockOwnedConnection(connection.id);
+    await assertSyncStillAuthorized(connection.id, selection.id, leaseId);
     const [existing] = await db.select().from(connectorSyncCheckpointsTable).where(and(
       eq(connectorSyncCheckpointsTable.connectionId, connection.id),
       eq(connectorSyncCheckpointsTable.resourceSelectionId, selection.id),
@@ -214,9 +241,45 @@ async function syncResource(
   let pageToken = checkpoint.nextPageToken;
   let pageNumber = checkpoint.lastSuccessfulPage;
   let recoveryAttempted = false;
-  const now = Date.now();
-  const backfillStart = new Date(now - backfillPastDays() * 86_400_000).toISOString();
-  const backfillEnd = new Date(now + backfillFutureDays() * 86_400_000).toISOString();
+  let { backfillStart, backfillEnd } = newBackfillWindow();
+
+  if (pageToken) {
+    const persistedStart = checkpoint.backfillTimeMin?.toISOString() ?? null;
+    const persistedEnd = checkpoint.backfillTimeMax?.toISOString() ?? null;
+    const queryStateValid = checkpoint.backfillQueryVersion === GOOGLE_EVENTS_QUERY_VERSION
+      && checkpoint.backfillQueryFingerprint === sourceQueryFingerprint(resource.stableId, cursor, persistedStart, persistedEnd)
+      && (cursor ? persistedStart === null && persistedEnd === null : persistedStart !== null && persistedEnd !== null);
+    if (queryStateValid) {
+      if (persistedStart && persistedEnd) {
+        backfillStart = persistedStart;
+        backfillEnd = persistedEnd;
+      }
+    } else {
+      recoveryAttempted = true;
+      counts.cursorRecoveryCount += 1;
+      cursor = null;
+      pageToken = null;
+      pageNumber = 0;
+      ({ backfillStart, backfillEnd } = newBackfillWindow());
+      checkpoint = await withDatabaseActor(actor, async () => {
+        await lockOwnedConnection(connection.id);
+        await assertSyncStillAuthorized(connection.id, selection.id, leaseId);
+        const [updated] = await db.update(connectorSyncCheckpointsTable).set({
+          cursor: null,
+          nextPageToken: null,
+          backfillTimeMin: null,
+          backfillTimeMax: null,
+          backfillQueryVersion: null,
+          backfillQueryFingerprint: null,
+          backfillState: "recovering",
+          cursorInvalidatedAt: new Date(),
+          lastSuccessfulPage: 0,
+          updatedAt: new Date(),
+        }).where(eq(connectorSyncCheckpointsTable.id, checkpoint.id)).returning();
+        return updated;
+      });
+    }
+  }
 
   for (let guard = 0; guard < 10_000; guard += 1) {
     let page;
@@ -235,9 +298,15 @@ async function syncResource(
         pageToken = null;
         pageNumber = 0;
         checkpoint = await withDatabaseActor(actor, async () => {
+          await lockOwnedConnection(connection.id);
+          await assertSyncStillAuthorized(connection.id, selection.id, leaseId);
           const [updated] = await db.update(connectorSyncCheckpointsTable).set({
             cursor: null,
             nextPageToken: null,
+            backfillTimeMin: null,
+            backfillTimeMax: null,
+            backfillQueryVersion: null,
+            backfillQueryFingerprint: null,
             backfillState: "recovering",
             cursorInvalidatedAt: new Date(),
             lastSuccessfulPage: 0,
@@ -246,6 +315,7 @@ async function syncResource(
           await db.update(connectorSyncRunsTable).set({ cursorRecoveryCount: counts.cursorRecoveryCount }).where(eq(connectorSyncRunsTable.id, runId));
           return updated;
         });
+        ({ backfillStart, backfillEnd } = newBackfillWindow());
         continue;
       }
       throw error;
@@ -253,7 +323,9 @@ async function syncResource(
 
     pageNumber += 1;
     const normalized = page.items.map((item) => provider.normalizeSourceObject(item, resource));
+    await timing.beforePagePersist?.();
     const pageCounts = await withDatabaseActor(actor, async () => {
+      await lockOwnedConnection(connection.id);
       await assertSyncStillAuthorized(connection.id, selection.id, leaseId);
       const delta = emptyCounts();
       delta.fetchedCount = normalized.length;
@@ -266,10 +338,17 @@ async function syncResource(
       if (finalPage && !page.nextCursor) {
         throw new ConnectorError("malformed_provider_response", "permanent_resource", "The provider did not return a durable sync cursor.");
       }
+      const persistedQueryFingerprint = page.nextPageToken
+        ? sourceQueryFingerprint(resource.stableId, cursor, cursor ? null : backfillStart, cursor ? null : backfillEnd)
+        : null;
       [checkpoint] = await db.update(connectorSyncCheckpointsTable).set({
         cursor: finalPage ? page.nextCursor : checkpoint.cursor,
         nextPageToken: page.nextPageToken,
-        backfillState: finalPage ? "complete" : (recoveryAttempted ? "recovering" : "in_progress"),
+        backfillTimeMin: page.nextPageToken && !cursor ? new Date(backfillStart) : null,
+        backfillTimeMax: page.nextPageToken && !cursor ? new Date(backfillEnd) : null,
+        backfillQueryVersion: page.nextPageToken ? GOOGLE_EVENTS_QUERY_VERSION : null,
+        backfillQueryFingerprint: persistedQueryFingerprint,
+        backfillState: finalPage ? "complete" : cursor ? "complete" : (recoveryAttempted ? "recovering" : "in_progress"),
         lastSuccessfulPage: pageNumber,
         lastCompletedSyncAt: finalPage ? new Date() : checkpoint.lastCompletedSyncAt,
         cursorInvalidatedAt: finalPage ? null : checkpoint.cursorInvalidatedAt,
@@ -280,6 +359,7 @@ async function syncResource(
       return delta;
     });
     addCounts(counts, pageCounts);
+    await timing.afterPagePersist?.();
     pageToken = page.nextPageToken;
     if (!pageToken) return;
   }
@@ -552,12 +632,21 @@ async function assertSyncStillAuthorized(connectionId: string, selectionId: stri
   if (connection.state !== "syncing" || !connection.activeConsentId || connection.syncLeaseId !== leaseId) {
     throw new ConnectorError("consent_revoked", "permanent_connection", "Synchronization stopped because authorization changed.");
   }
-  const [selection] = await db.select().from(connectorResourceSelectionsTable).where(and(
-    eq(connectorResourceSelectionsTable.id, selectionId),
+  const selections = await db.select().from(connectorResourceSelectionsTable).where(and(
+    eq(connectorResourceSelectionsTable.connectionId, connectionId),
     eq(connectorResourceSelectionsTable.selected, true),
     eq(connectorResourceSelectionsTable.accessStatus, "available"),
   ));
-  if (!selection) throw new ConnectorError("resource_removed", "permanent_resource", "The selected calendar is no longer available.");
+  if (!selections.some((selection) => selection.id === selectionId)) {
+    throw new ConnectorError("resource_removed", "permanent_resource", "The selected calendar is no longer available.");
+  }
+  const [consent] = await db.select().from(connectorConsentsTable).where(and(
+    eq(connectorConsentsTable.id, connection.activeConsentId),
+    eq(connectorConsentsTable.status, "active"),
+  ));
+  if (!isConnectorConsentCurrent(connection, consent, selections.map((selection) => selection.providerResourceId))) {
+    throw new ConnectorError("consent_revoked", "permanent_connection", "Synchronization stopped because authorization changed.");
+  }
 }
 
 async function finishSync(
@@ -569,7 +658,7 @@ async function finishSync(
   error: unknown,
 ) {
   return withDatabaseActor(actor, async () => {
-    let connection = await requireOwnedConnection(connectionId);
+    let connection = await lockOwnedConnection(connectionId);
     if (connection.syncLeaseId !== leaseId && connection.state !== "revoked") {
       throw new ConnectorAccessError(409, "Synchronization lease changed before completion.");
     }
@@ -626,6 +715,34 @@ async function finishSync(
     const [run] = await db.select().from(connectorSyncRunsTable).where(eq(connectorSyncRunsTable.id, runId));
     return run;
   });
+}
+
+function newBackfillWindow(): { backfillStart: string; backfillEnd: string } {
+  const now = Date.now();
+  return {
+    backfillStart: new Date(now - backfillPastDays() * 86_400_000).toISOString(),
+    backfillEnd: new Date(now + backfillFutureDays() * 86_400_000).toISOString(),
+  };
+}
+
+function sourceQueryFingerprint(
+  resourceId: string,
+  cursor: string | null,
+  backfillStart: string | null,
+  backfillEnd: string | null,
+): string {
+  const canonicalQuery = JSON.stringify({
+    version: GOOGLE_EVENTS_QUERY_VERSION,
+    resourceId,
+    mode: cursor ? "incremental" : "backfill",
+    cursor,
+    timeMin: backfillStart,
+    timeMax: backfillEnd,
+    maxResults: GOOGLE_EVENTS_PAGE_SIZE,
+    showDeleted: true,
+    singleEvents: false,
+  });
+  return createHash("sha256").update(canonicalQuery, "utf8").digest("hex");
 }
 
 async function recordCredentialFailure(

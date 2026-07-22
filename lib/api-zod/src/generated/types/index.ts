@@ -23,6 +23,7 @@ export * from './connectorDefinitionDocumentation';
 export * from './connectorDefinitionSensitivity';
 export * from './connectorDefinitionStatus';
 export * from './connectorErrorResponse';
+export * from './connectorImportPolicy';
 export * from './connectorResource';
 export * from './connectorResourceAccessStatus';
 export * from './connectorResourceDisplayMetadata';

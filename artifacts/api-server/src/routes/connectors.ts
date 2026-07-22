@@ -24,7 +24,6 @@ import {
 import { runConnectorSync } from "../lib/connectors/connector-sync-service";
 import { connectorProviderMode } from "../lib/connectors/provider-factory";
 import { fakeGoogleCalendarProvider } from "../lib/connectors/fake-google-calendar-provider";
-import { GOOGLE_CALENDAR_CONSENT_PURPOSE, GOOGLE_CALENDAR_CONSENT_TEXT_VERSION } from "../lib/connectors/connector-definition";
 
 const router: IRouter = Router();
 router.use("/connectors", requireAuth);
@@ -33,8 +32,9 @@ const connectionParamsSchema = z.object({ connectionId: z.string().uuid() }).str
 const selectionSchema = z.object({ resourceIds: z.array(z.string().min(1).max(1024)).min(1).max(100) }).strict();
 const consentSchema = z.object({
   confirmed: z.literal(true),
-  purpose: z.literal(GOOGLE_CALENDAR_CONSENT_PURPOSE),
-  consentTextVersion: z.literal(GOOGLE_CALENDAR_CONSENT_TEXT_VERSION),
+  purpose: z.string().min(1).max(500),
+  consentTextVersion: z.string().min(1).max(100),
+  consentPolicyFingerprint: z.string().regex(/^[0-9a-f]{64}$/),
 }).strict();
 const revokeSchema = z.object({ disposition: z.enum(["retain", "archive", "delete"]) }).strict();
 const fakeScenarioSchema = z.object({
