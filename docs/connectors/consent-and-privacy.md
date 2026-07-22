@@ -6,6 +6,8 @@ Google OAuth authorizes Lighthouse to call Google. Lighthouse consent authorizes
 
 Consent records include requested and granted scopes, selected capabilities and resources, purpose text, consent-copy version, material version, actor, Passport, account ID, consent time, status, and revocation time. Changing selected calendars supersedes active consent, pauses synchronization, and requires confirmation again.
 
+The connector-definition API publishes the server's effective historical and future import windows. The app renders those values rather than maintaining separate scope copy. A canonical policy fingerprint covers the connector, purpose/text policy version, and effective window. That fingerprint is part of the consent material version checked before every sync page is committed. Changing a material import boundary invalidates prior consent until the user confirms the new policy; unrelated deployment configuration does not invalidate consent.
+
 ## Ownership
 
 - One adult cannot create, inspect, sync, pause, revoke, or infer another adult's connection.
@@ -16,7 +18,7 @@ Consent records include requested and granted scopes, selected capabilities and 
 
 ## Revocation
 
-Local revocation is committed before best-effort provider revocation, so an in-flight page cannot persist after the connection becomes revoked. Credentials are removed in every revocation mode.
+Local revocation and page persistence serialize on the owned connection row. Revocation is committed before best-effort provider revocation, so an in-flight page cannot persist after the connection becomes revoked. Credentials are removed in every revocation mode.
 
 - **Retain:** mappings detach and private Lighthouse copies remain.
 - **Archive:** eligible source-backed records archive. Corrected, detached, and legally held records remain.

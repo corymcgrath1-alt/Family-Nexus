@@ -12,6 +12,8 @@ Run one scheduled claim with `pnpm run connector:worker:once`. An external sched
 
 Required connector variables are documented in `.env.example`: provider mode, app origin, redirect allowlist, active key version, versioned keyring, and bounded backfill windows. Live mode additionally requires Google client ID, client secret, and exact redirect URI. Fake mode is accepted in test/development only and hard-fails in production.
 
+The bounded backfill variables are material consent policy. Changing their effective server values requires users to renew Lighthouse import consent before more provider rows can be committed. Connector-definition responses expose the effective values used by the consent UI.
+
 ## Operational Signals
 
 Structured logs expose redacted signals for idle/claimed workers, completed and failed runs, fetched/changed counts, retries, rate-limit categories, cursor recovery, and reconnect-required state. Connector audit rows record user-visible lifecycle actions. Neither channel includes tokens, codes, cursors, event titles/descriptions, attendee addresses, or provider payloads.
@@ -22,7 +24,7 @@ Each worker invocation applies the worker-only `lighthouse_purge_connector_opera
 
 ## Recovery
 
-- Expired lease: the next claim or manual run recovers the stale run.
+- Expired lease: a scheduled claim atomically reclaims a `syncing` connection only after `sync_lease_expires_at`; it closes stale running metadata and prevents a second worker from winning the same row.
 - Rate limit/provider outage: bounded retries, then `degraded` with a redacted error.
 - Invalid credentials/permission loss: `reconnect_required`.
 - Invalid cursor: one bounded resource recovery.
@@ -30,3 +32,7 @@ Each worker invocation applies the worker-only `lighthouse_purge_connector_opera
 - Key rotation: add a decryptable old version, make the new version active, then re-encrypt on controlled credential reads/writes before removing the old key.
 
 Push notification endpoints are intentionally absent. A future endpoint must authenticate provider channel identifiers and only enqueue a connection-scoped job; notification bodies are never event truth.
+
+## Corrective Migration
+
+Migration `0005_connector_phase2_review_fixes.sql` adds durable initial-query checkpoint fields, atomically reclaimable stale synchronization leases, and actor-owned target checks for source mappings. It is forward-only and leaves migration `0004` unchanged. Runtime roles cannot mutate the migration ledger or bypass the tightened mapping policies.
