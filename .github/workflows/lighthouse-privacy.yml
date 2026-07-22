@@ -127,6 +127,9 @@ jobs:
       - name: Connector platform unit tests
         run: pnpm run test:connector-platform
 
+      - name: Server configuration unit tests
+        run: pnpm run test:server-config
+
       - name: Database-backed API integration tests
         run: pnpm run test:integration
 

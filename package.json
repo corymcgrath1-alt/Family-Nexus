@@ -19,6 +19,7 @@
     "test:library-policy": "pnpm --filter @workspace/api-server exec tsc src/lib/library-policy.ts src/lib/library-policy.test.ts --module commonjs --target es2022 --moduleResolution node --outDir ../../tmp/library-policy-test --skipLibCheck --strict --esModuleInterop --types node && node tmp/library-policy-test/library-policy.test.js",
     "test:knowledge-model": "pnpm --filter @workspace/knowledge-model run test",
     "test:connector-platform": "pnpm --filter @workspace/api-server exec tsx --test src/lib/connectors/connector-platform.test.ts",
+    "test:server-config": "pnpm --filter @workspace/api-server exec tsx --test src/lib/session-config.test.ts",
     "connector:worker:once": "pnpm --filter @workspace/api-server run worker:once",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
