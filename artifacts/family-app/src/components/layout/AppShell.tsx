@@ -26,12 +26,14 @@ type NavItem = {
   label: string;
   mobileLabel?: string;
   icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
+  mobile?: boolean;
 };
 
 const NAV_ITEMS: NavItem[] = [
   { path: "/", label: "Today", icon: Home },
   { path: "/family", label: "Family", icon: Users },
   { path: "/library", label: "Library", icon: Library },
+  { path: "/connectors", label: "Connectors", icon: Plug, mobile: false },
   { path: "/together", label: "Connection", icon: Compass },
   { path: "/privacy", label: "Settings and Privacy", icon: Shield, mobileLabel: "Privacy" },
 ];
@@ -44,7 +46,6 @@ const PREVIEW_ITEMS = [
   { label: "Vehicles", icon: Car },
   { label: "Money", icon: WalletCards },
   { label: "Career", icon: BriefcaseBusiness },
-  { label: "Integrations", icon: Plug },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -144,6 +145,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <header className="md:hidden sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b border-border p-4 flex items-center justify-between">
           <span className="font-serif text-lg font-semibold">{PRODUCT_NAME}</span>
           <div className="flex gap-2">
+            <Link href="/connectors" aria-label="Connectors" className="w-8 h-8 rounded-md border border-border flex items-center justify-center text-muted-foreground hover:text-foreground">
+              <Plug className="w-4 h-4" />
+            </Link>
             {user && (
               <div
                 className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold text-white"
@@ -159,7 +163,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Mobile Bottom Nav */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-background border-t border-border flex items-center justify-around px-2 pb-safe pt-2 z-50">
-        {NAV_ITEMS.map((item) => {
+        {NAV_ITEMS.filter((item) => item.mobile !== false).map((item) => {
           const isActive = location === item.path || (item.path !== "/" && location.startsWith(item.path));
           return (
             <Link key={item.path} href={item.path} className={cn(

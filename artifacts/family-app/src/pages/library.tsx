@@ -84,6 +84,7 @@ const categoryOptions = [
   ["household-record", "Household record"],
   ["vehicle-record", "Vehicle record"],
   ["career-record", "Career record"],
+  ["calendar-event", "Calendar event"],
   ["other", "Other"],
 ] as const;
 

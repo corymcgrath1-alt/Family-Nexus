@@ -15,6 +15,7 @@ import HouseholdPage from '@/pages/household';
 import VaultPage from '@/pages/vault';
 import PrivacyPage from '@/pages/privacy';
 import LibraryPage from '@/pages/library';
+import ConnectorsPage from '@/pages/connectors';
 
 // Auth Pages
 import LoginPage from '@/pages/auth/login';
@@ -66,6 +67,7 @@ function Router() {
             <Route path="/library" component={() => <ProtectedRoute component={LibraryPage} />} />
             <Route path="/vault" component={() => <ProtectedRoute component={VaultPage} />} />
             <Route path="/privacy" component={() => <ProtectedRoute component={PrivacyPage} />} />
+            <Route path="/connectors" component={() => <ProtectedRoute component={ConnectorsPage} />} />
 
             {/* Detail routes first */}
             <Route path="/together/experiences/:id" component={() => <ProtectedRoute component={ExperienceDetailPage} />} />
